@@ -1,2 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Allow Infrastructure to call internal domain methods (e.g. BaseEntity.ClearDomainEvents) -->
+  <!-- Allow test projects to verify domain event dispatch -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Tracer.Infrastructure" />
+    <InternalsVisibleTo Include="Tracer.Domain.Tests" />
+    <InternalsVisibleTo Include="Tracer.Application.Tests" />
+    <InternalsVisibleTo Include="Tracer.Infrastructure.Tests" />
+  </ItemGroup>
+
 </Project>
