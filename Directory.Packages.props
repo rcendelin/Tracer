@@ -1,0 +1,65 @@
+<Project>
+
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <ItemGroup Label="ASP.NET Core">
+    <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.0-preview.4.25258.110" />
+  </ItemGroup>
+
+  <ItemGroup Label="CQRS + Validation">
+    <!-- MediatR 12+ includes DI integration, no separate extension package needed -->
+    <PackageVersion Include="MediatR" Version="12.5.0" />
+    <PackageVersion Include="FluentValidation" Version="11.11.0" />
+    <PackageVersion Include="FluentValidation.DependencyInjectionExtensions" Version="11.11.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="Entity Framework Core">
+    <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.0-preview.4.25258.110" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.0-preview.4.25258.110" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Tools" Version="10.0.0-preview.4.25258.110" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.0-preview.4.25258.110" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.0-preview.4.25258.110" />
+  </ItemGroup>
+
+  <ItemGroup Label="HTTP Resilience">
+    <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="9.5.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="Azure">
+    <PackageVersion Include="Azure.Messaging.ServiceBus" Version="7.18.4" />
+    <PackageVersion Include="Azure.AI.OpenAI" Version="2.2.0-beta.4" />
+    <PackageVersion Include="Azure.Identity" Version="1.13.2" />
+  </ItemGroup>
+
+  <ItemGroup Label="Logging">
+    <PackageVersion Include="Serilog.AspNetCore" Version="9.0.0" />
+    <PackageVersion Include="Serilog.Sinks.ApplicationInsights" Version="4.0.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="HTML Parsing">
+    <PackageVersion Include="AngleSharp" Version="1.2.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="Testing">
+    <PackageVersion Include="xunit" Version="2.9.3" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />
+    <PackageVersion Include="NSubstitute" Version="5.3.0" />
+    <PackageVersion Include="FluentAssertions" Version="8.2.0" />
+    <PackageVersion Include="WireMock.Net" Version="2.2.0" />
+    <PackageVersion Include="Testcontainers.MsSql" Version="4.3.0" />
+    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.0-preview.4.25258.110" />
+    <PackageVersion Include="coverlet.collector" Version="6.0.4" />
+  </ItemGroup>
+
+  <!-- Security: Override transitive vulnerable packages to safe versions -->
+  <ItemGroup Label="Security overrides">
+    <!-- GHSA-4cv2-4hjh-77rx: System.Linq.Dynamic.Core < 1.3.14 (via WireMock.Net transitive) -->
+    <PackageVersion Include="System.Linq.Dynamic.Core" Version="1.7.2" />
+    <!-- GHSA-h4j7-5rxr-p4wc: Microsoft.Build.Tasks.Core 17.7.2 (via EF Core Design transitive) -->
+    <PackageVersion Include="Microsoft.Build.Tasks.Core" Version="18.4.0" />
+  </ItemGroup>
+
+</Project>

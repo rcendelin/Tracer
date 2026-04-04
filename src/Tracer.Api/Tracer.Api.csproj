@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Serilog.AspNetCore" />
+  </ItemGroup>
+
+  <!-- Allow integration test projects to access internal types (e.g. Program for WebApplicationFactory) -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Tracer.Infrastructure.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Tracer.Application\Tracer.Application.csproj" />
+    <ProjectReference Include="..\Tracer.Infrastructure\Tracer.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>
