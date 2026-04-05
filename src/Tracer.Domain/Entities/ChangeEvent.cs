@@ -27,11 +27,17 @@ public sealed class ChangeEvent : BaseEntity
         Field = field;
         ChangeType = changeType;
         Severity = severity;
-        PreviousValueJson = previousValueJson;
-        NewValueJson = newValueJson;
+        PreviousValueJson = previousValueJson is { Length: > MaxValueJsonLength }
+            ? previousValueJson[..MaxValueJsonLength]
+            : previousValueJson;
+        NewValueJson = newValueJson is { Length: > MaxValueJsonLength }
+            ? newValueJson[..MaxValueJsonLength]
+            : newValueJson;
         DetectedBy = detectedBy;
         DetectedAt = DateTimeOffset.UtcNow;
     }
+
+    private const int MaxValueJsonLength = 4000;
 
     public Guid CompanyProfileId { get; private set; }
     public FieldName Field { get; private set; }
