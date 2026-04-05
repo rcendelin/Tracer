@@ -24,6 +24,7 @@ public static class ApplicationServiceRegistration
         services.AddTransient(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
 
         services.AddScoped<IWaterfallOrchestrator, WaterfallOrchestrator>();
+        services.AddSingleton<IConfidenceScorer, ConfidenceScorer>();
 
         return services;
     }
