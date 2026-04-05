@@ -11,6 +11,8 @@
       Track: remove this suppression when EF Core 10 RTM ships with a safe MSBuild dependency.
     -->
     <NoWarn>$(NoWarn);NU1903</NoWarn>
+    <!-- CA1812: EF Core IEntityTypeConfiguration classes are instantiated via reflection by ApplyConfigurationsFromAssembly. -->
+    <NoWarn>$(NoWarn);CA1812</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
