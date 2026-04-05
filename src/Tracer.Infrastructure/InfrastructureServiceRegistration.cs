@@ -5,6 +5,7 @@ using Tracer.Domain.Interfaces;
 using Tracer.Infrastructure.Persistence;
 using Tracer.Infrastructure.Persistence.Repositories;
 using Tracer.Infrastructure.Providers.Ares;
+using Tracer.Infrastructure.Providers.GleifLei;
 
 namespace Tracer.Infrastructure;
 
@@ -50,8 +51,24 @@ public static class InfrastructureServiceRegistration
             options.Retry.MaxRetryAttempts = 3;
         });
 
+        // GLEIF LEI client with resilience (free API, no key)
+        services.AddHttpClient<IGleifClient, GleifClient>(client =>
+        {
+            client.BaseAddress = new Uri("https://api.gleif.org/api/v1/");
+            client.Timeout = Timeout.InfiniteTimeSpan;
+            client.DefaultRequestHeaders.Accept.Add(
+                new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/vnd.api+json"));
+        })
+        .AddStandardResilienceHandler(options =>
+        {
+            options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(10);
+            options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(30);
+            options.Retry.MaxRetryAttempts = 3;
+        });
+
         // Enrichment providers
         services.AddSingleton<IEnrichmentProvider, AresProvider>();
+        services.AddSingleton<IEnrichmentProvider, GleifProvider>();
 
         return services;
     }
