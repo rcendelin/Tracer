@@ -1,5 +1,9 @@
 using System.Globalization;
+using FluentValidation;
 using Serilog;
+using Tracer.Application;
+using Tracer.Api.Endpoints;
+using Tracer.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -11,17 +15,43 @@ builder.Host.UseSerilog((ctx, lc) => lc
 // OpenAPI
 builder.Services.AddOpenApi();
 
-// TODO B-08+: Register MediatR, FluentValidation, DbContext, Repositories, Providers
-// builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(SubmitTraceCommand).Assembly));
-// builder.Services.AddValidatorsFromAssembly(typeof(SubmitTraceCommand).Assembly);
+// Application layer: MediatR, FluentValidation, Orchestrator, Scorer, Merger, Resolver, CKB persistence
+builder.Services.AddApplication();
+
+// Infrastructure layer: DbContext, Repositories, HTTP clients, Providers
+var connectionString = builder.Configuration.GetConnectionString("TracerDb")
+    ?? throw new InvalidOperationException("ConnectionStrings:TracerDb is not configured.");
+builder.Services.AddInfrastructure(connectionString);
+
+// CORS for Tracer.Web SPA
+var corsOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>();
+if ((corsOrigins is null || corsOrigins.Length == 0) && !builder.Environment.IsDevelopment())
+    throw new InvalidOperationException("Cors:AllowedOrigins must be configured in production.");
+
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+    {
+        policy.WithOrigins(corsOrigins ?? ["http://localhost:5173"])
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials();
+    });
+});
 
 // Health checks
 builder.Services.AddHealthChecks();
 
+// ProblemDetails (RFC 7807)
+builder.Services.AddProblemDetails();
+
 var app = builder.Build();
 
+// Middleware pipeline
+app.UseExceptionHandler();
+app.UseStatusCodePages();
 app.UseHttpsRedirection();
-// TODO B-23+: Add security headers middleware (CSP, HSTS, X-Content-Type-Options, X-Frame-Options)
+app.UseCors();
 app.UseSerilogRequestLogging();
 
 if (app.Environment.IsDevelopment())
@@ -29,15 +59,14 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
-app.MapHealthChecks("/health");
+// TODO: Implement API key authentication from Auth:ApiKeys config before production deployment.
+// All endpoints are currently unauthenticated (acceptable for Phase 1 MVP development).
 
-// TODO B-22+: Map feature endpoints
-// app.MapTraceEndpoints();
-// app.MapProfileEndpoints();
-// app.MapChangeEndpoints();
-// app.MapValidationEndpoints();
+// Endpoints
+app.MapHealthChecks("/health");
+app.MapTraceEndpoints();
 
 app.Run();
 
 // Make Program accessible to WebApplicationFactory in integration tests via InternalsVisibleTo
-internal partial class Program { }
+internal partial class Program;
