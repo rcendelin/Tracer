@@ -7,6 +7,7 @@ using Tracer.Infrastructure.Persistence.Repositories;
 using Tracer.Infrastructure.Providers.Ares;
 using Tracer.Infrastructure.Providers.GleifLei;
 using Tracer.Infrastructure.Providers.GoogleMaps;
+using Tracer.Infrastructure.Providers.AzureMaps;
 
 namespace Tracer.Infrastructure;
 
@@ -86,10 +87,32 @@ public static class InfrastructureServiceRegistration
             options.Retry.MaxRetryAttempts = 2;
         });
 
+        // Azure Maps Geocoding — subscription key from configuration
+        services.AddHttpClient<IAzureMapsClient, AzureMapsClient>((sp, client) =>
+        {
+            var cfg = sp.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>();
+            var azureMapsKey = cfg["Providers:AzureMaps:SubscriptionKey"]
+                ?? throw new InvalidOperationException(
+                    "Azure Maps subscription key is not configured. Set 'Providers:AzureMaps:SubscriptionKey'.");
+
+            client.BaseAddress = new Uri("https://atlas.microsoft.com/");
+            client.Timeout = Timeout.InfiniteTimeSpan;
+            // Pass subscription key via default query string is not possible with HttpClient,
+            // so we store it in a custom header and the client reads it.
+            client.DefaultRequestHeaders.Add("X-AzureMaps-Key", azureMapsKey);
+        })
+        .AddStandardResilienceHandler(options =>
+        {
+            options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(5);
+            options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(15);
+            options.Retry.MaxRetryAttempts = 2;
+        });
+
         // Enrichment providers
         services.AddTransient<IEnrichmentProvider, AresProvider>();
         services.AddTransient<IEnrichmentProvider, GleifProvider>();
         services.AddTransient<IEnrichmentProvider, GoogleMapsProvider>();
+        services.AddTransient<IEnrichmentProvider, AzureMapsProvider>();
 
         return services;
     }
