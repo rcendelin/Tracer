@@ -37,6 +37,7 @@ public static class InfrastructureServiceRegistration
         services.AddScoped<ICompanyProfileRepository, CompanyProfileRepository>();
         services.AddScoped<IChangeEventRepository, ChangeEventRepository>();
         services.AddScoped<IValidationRecordRepository, ValidationRecordRepository>();
+        services.AddScoped<ISourceResultRepository, SourceResultRepository>();
 
         // ARES client with resilience (retry 3x, timeout 10s)
         services.AddHttpClient<IAresClient, AresClient>(client =>
