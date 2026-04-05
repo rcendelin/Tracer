@@ -8,6 +8,10 @@
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.0-preview.4.25258.110" />
   </ItemGroup>
 
+  <ItemGroup Label="Logging + Abstractions">
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0-preview.4.25258.110" />
+  </ItemGroup>
+
   <ItemGroup Label="CQRS + Validation">
     <!-- MediatR 12+ includes DI integration, no separate extension package needed -->
     <PackageVersion Include="MediatR" Version="12.5.0" />
