@@ -50,6 +50,9 @@ public static class InfrastructureServiceRegistration
             options.Retry.MaxRetryAttempts = 3;
         });
 
+        // Enrichment providers
+        services.AddSingleton<IEnrichmentProvider, AresProvider>();
+
         return services;
     }
 }
