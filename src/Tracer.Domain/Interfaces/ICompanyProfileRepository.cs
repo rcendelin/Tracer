@@ -38,4 +38,40 @@ public interface ICompanyProfileRepository
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Profiles that have at least one expired field TTL.</returns>
     Task<IReadOnlyCollection<CompanyProfile>> GetRevalidationQueueAsync(int maxCount, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets a company profile by its ID.
+    /// </summary>
+    Task<CompanyProfile?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lists company profiles with pagination and optional filters.
+    /// </summary>
+    /// <param name="page">Zero-based page index.</param>
+    /// <param name="pageSize">Number of items per page.</param>
+    /// <param name="country">Optional country code filter.</param>
+    /// <param name="minConfidence">Optional minimum overall confidence filter.</param>
+    /// <param name="maxConfidence">Optional maximum overall confidence filter.</param>
+    /// <param name="validatedBefore">Optional filter: profiles not validated since this date.</param>
+    /// <param name="includeArchived">Whether to include archived profiles. Default: false.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<IReadOnlyCollection<CompanyProfile>> ListAsync(
+        int page, int pageSize,
+        string? country = null,
+        double? minConfidence = null,
+        double? maxConfidence = null,
+        DateTimeOffset? validatedBefore = null,
+        bool includeArchived = false,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Counts company profiles matching the specified filters.
+    /// </summary>
+    Task<int> CountAsync(
+        string? country = null,
+        double? minConfidence = null,
+        double? maxConfidence = null,
+        DateTimeOffset? validatedBefore = null,
+        bool includeArchived = false,
+        CancellationToken cancellationToken = default);
 }

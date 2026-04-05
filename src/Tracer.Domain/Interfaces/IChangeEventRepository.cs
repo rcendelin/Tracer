@@ -37,4 +37,10 @@ public interface IChangeEventRepository
     /// <param name="pageSize">Number of items per page.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     Task<IReadOnlyCollection<ChangeEvent>> ListBySeverityAsync(ChangeSeverity minSeverity, int page, int pageSize, CancellationToken cancellationToken = default);
+
+    /// <summary>Counts change events for a specific company profile.</summary>
+    Task<int> CountByProfileAsync(Guid companyProfileId, CancellationToken cancellationToken = default);
+
+    /// <summary>Counts change events matching the minimum severity filter.</summary>
+    Task<int> CountBySeverityAsync(ChangeSeverity minSeverity, CancellationToken cancellationToken = default);
 }
