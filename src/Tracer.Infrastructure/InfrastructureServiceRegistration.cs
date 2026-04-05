@@ -6,6 +6,7 @@ using Tracer.Infrastructure.Persistence;
 using Tracer.Infrastructure.Persistence.Repositories;
 using Tracer.Infrastructure.Providers.Ares;
 using Tracer.Infrastructure.Providers.GleifLei;
+using Tracer.Infrastructure.Providers.GoogleMaps;
 
 namespace Tracer.Infrastructure;
 
@@ -66,9 +67,29 @@ public static class InfrastructureServiceRegistration
             options.Retry.MaxRetryAttempts = 3;
         });
 
+        // Google Maps Places API (New) — requires API key from configuration
+        services.AddHttpClient<IGoogleMapsClient, GoogleMapsClient>((sp, client) =>
+        {
+            var config = sp.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>();
+            var apiKey = config["Providers:GoogleMaps:ApiKey"]
+                ?? throw new InvalidOperationException(
+                    "Google Maps API key is not configured. Set 'Providers:GoogleMaps:ApiKey'.");
+
+            client.BaseAddress = new Uri("https://places.googleapis.com/");
+            client.Timeout = Timeout.InfiniteTimeSpan;
+            client.DefaultRequestHeaders.Add("X-Goog-Api-Key", apiKey);
+        })
+        .AddStandardResilienceHandler(options =>
+        {
+            options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(5);
+            options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(15);
+            options.Retry.MaxRetryAttempts = 2;
+        });
+
         // Enrichment providers
-        services.AddSingleton<IEnrichmentProvider, AresProvider>();
-        services.AddSingleton<IEnrichmentProvider, GleifProvider>();
+        services.AddTransient<IEnrichmentProvider, AresProvider>();
+        services.AddTransient<IEnrichmentProvider, GleifProvider>();
+        services.AddTransient<IEnrichmentProvider, GoogleMapsProvider>();
 
         return services;
     }
