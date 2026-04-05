@@ -1,8 +1,10 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Http.Resilience;
 using Tracer.Domain.Interfaces;
 using Tracer.Infrastructure.Persistence;
 using Tracer.Infrastructure.Persistence.Repositories;
+using Tracer.Infrastructure.Providers.Ares;
 
 namespace Tracer.Infrastructure;
 
@@ -32,6 +34,21 @@ public static class InfrastructureServiceRegistration
         services.AddScoped<ICompanyProfileRepository, CompanyProfileRepository>();
         services.AddScoped<IChangeEventRepository, ChangeEventRepository>();
         services.AddScoped<IValidationRecordRepository, ValidationRecordRepository>();
+
+        // ARES client with resilience (retry 3x, timeout 10s)
+        services.AddHttpClient<IAresClient, AresClient>(client =>
+        {
+            client.BaseAddress = new Uri("https://ares.gov.cz/ekonomicke-subjekty-v-be/rest/");
+            client.Timeout = Timeout.InfiniteTimeSpan; // Polly controls all timeouts
+            client.DefaultRequestHeaders.Accept.Add(
+                new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+        })
+        .AddStandardResilienceHandler(options =>
+        {
+            options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(10);
+            options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(30);
+            options.Retry.MaxRetryAttempts = 3;
+        });
 
         return services;
     }
