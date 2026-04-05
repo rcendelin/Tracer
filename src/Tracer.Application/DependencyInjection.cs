@@ -2,6 +2,7 @@ using FluentValidation;
 using MediatR;
 using Microsoft.Extensions.DependencyInjection;
 using Tracer.Application.Behaviors;
+using Tracer.Application.Services;
 
 namespace Tracer.Application;
 
@@ -21,6 +22,8 @@ public static class ApplicationServiceRegistration
         services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(assembly));
         services.AddValidatorsFromAssembly(assembly);
         services.AddTransient(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
+
+        services.AddScoped<IWaterfallOrchestrator, WaterfallOrchestrator>();
 
         return services;
     }
