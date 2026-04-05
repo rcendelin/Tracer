@@ -98,7 +98,7 @@ internal static class TraceEndpoints
         var query = new ListTracesQuery
         {
             Page = page,
-            PageSize = pageSize > 0 ? pageSize : 20,
+            PageSize = pageSize > 0 ? Math.Min(pageSize, 100) : 20,
             Status = status,
             From = dateFrom,
             To = dateTo,

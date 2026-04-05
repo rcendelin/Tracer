@@ -3,6 +3,7 @@ using FluentValidation;
 using Serilog;
 using Tracer.Application;
 using Tracer.Api.Endpoints;
+using Tracer.Api.Middleware;
 using Tracer.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -59,12 +60,14 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
-// TODO: Implement API key authentication from Auth:ApiKeys config before production deployment.
-// All endpoints are currently unauthenticated (acceptable for Phase 1 MVP development).
+// API key authentication — validates X-Api-Key header. Skips /health and /openapi.
+// When no keys are configured (Auth:ApiKeys empty), all requests pass (dev mode).
+app.UseApiKeyAuth();
 
 // Endpoints
 app.MapHealthChecks("/health");
 app.MapTraceEndpoints();
+app.MapProfileEndpoints();
 
 app.Run();
 
