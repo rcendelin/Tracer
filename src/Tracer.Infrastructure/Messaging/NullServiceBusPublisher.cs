@@ -14,4 +14,7 @@ internal sealed class NullServiceBusPublisher : IServiceBusPublisher
 
     public Task PublishChangeEventAsync(ChangeEventMessage message, CancellationToken cancellationToken) =>
         Task.CompletedTask;
+
+    public Task EnqueueTraceRequestAsync(TraceRequestMessage message, CancellationToken cancellationToken) =>
+        Task.CompletedTask;
 }

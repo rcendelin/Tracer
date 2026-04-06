@@ -2,6 +2,7 @@ using FluentValidation;
 using MediatR;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
+using Tracer.Application.Commands.SubmitBatchTrace;
 using Tracer.Application.Commands.SubmitTrace;
 using Tracer.Application.DTOs;
 using Tracer.Application.Queries.GetTraceResult;
@@ -38,6 +39,15 @@ internal static class TraceEndpoints
             .WithName("ListTraces")
             .WithSummary("List trace requests with filters")
             .Produces<PagedResult<TraceResultDto>>();
+
+        group.MapPost("/batch", SubmitBatchTraceAsync)
+            .WithName("SubmitBatchTrace")
+            .WithSummary("Submit a batch of enrichment requests for async processing via Service Bus")
+            .Produces<BatchTraceResultDto>(StatusCodes.Status202Accepted)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status429TooManyRequests)
+            .ProducesProblem(StatusCodes.Status500InternalServerError)
+            .RequireRateLimiting("batch");
 
         return group;
     }
@@ -83,6 +93,36 @@ internal static class TraceEndpoints
         return result is not null
             ? TypedResults.Ok(result)
             : TypedResults.NotFound();
+    }
+
+    private static async Task<Results<Accepted<BatchTraceResultDto>, ValidationProblem>> SubmitBatchTraceAsync(
+        [FromBody] IReadOnlyCollection<TraceRequestDto> items,
+        [FromQuery] string? source,
+        IMediator mediator,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var command = new SubmitBatchTraceCommand
+            {
+                Items = items,
+                Source = source ?? "rest-api-batch",
+            };
+
+            var result = await mediator.Send(command, cancellationToken).ConfigureAwait(false);
+
+            return TypedResults.Accepted("/api/trace/batch", result);
+        }
+        catch (ValidationException ex)
+        {
+            var errors = ex.Errors
+                .GroupBy(e => e.PropertyName)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.Select(e => e.ErrorMessage).ToArray());
+
+            return TypedResults.ValidationProblem(errors);
+        }
     }
 
     private static async Task<Ok<PagedResult<TraceResultDto>>> ListTracesAsync(

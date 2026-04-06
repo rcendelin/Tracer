@@ -27,4 +27,13 @@ public interface IServiceBusPublisher
     /// <param name="message">The change event message.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     Task PublishChangeEventAsync(ChangeEventMessage message, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Enqueues a trace request to the <c>tracer-request</c> queue for async processing.
+    /// Used by the batch endpoint to submit requests for background enrichment.
+    /// Sets <c>MessageId = CorrelationId</c> to enable Service Bus duplicate detection.
+    /// </summary>
+    /// <param name="message">The enrichment request to enqueue.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task EnqueueTraceRequestAsync(TraceRequestMessage message, CancellationToken cancellationToken = default);
 }

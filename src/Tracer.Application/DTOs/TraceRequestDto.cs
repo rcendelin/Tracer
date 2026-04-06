@@ -7,6 +7,11 @@ namespace Tracer.Application.DTOs;
 /// </summary>
 public sealed record TraceRequestDto
 {
+    /// <summary>
+    /// Optional caller-supplied correlation ID. Echoed back in batch responses for request-reply matching.
+    /// </summary>
+    public string? CorrelationId { get; init; }
+
     public string? CompanyName { get; init; }
     public string? Phone { get; init; }
     public string? Email { get; init; }

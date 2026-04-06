@@ -1,5 +1,6 @@
 using System.Globalization;
-using FluentValidation;
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.HttpOverrides;
 using Serilog;
 using Tracer.Application;
 using Tracer.Api.Endpoints;
@@ -54,15 +55,44 @@ builder.Services.AddCors(options =>
     });
 });
 
+// Forwarded headers — required for correct RemoteIpAddress behind Azure App Service / Front Door.
+// KnownIPNetworks restricts which upstream proxies are trusted to set X-Forwarded-For.
+// Without this, rate limiting and logging would use the proxy IP, not the client IP.
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    // Azure infrastructure uses RFC 1918 space; restrict to private ranges only
+    options.KnownIPNetworks.Add(System.Net.IPNetwork.Parse("10.0.0.0/8"));
+    options.KnownIPNetworks.Add(System.Net.IPNetwork.Parse("172.16.0.0/12"));
+    options.KnownIPNetworks.Add(System.Net.IPNetwork.Parse("192.168.0.0/16"));
+});
+
 // Health checks
 builder.Services.AddHealthChecks();
 
 // ProblemDetails (RFC 7807)
 builder.Services.AddProblemDetails();
 
+// Rate limiting — batch endpoint: 5 requests per minute per client IP
+builder.Services.AddRateLimiter(options =>
+{
+    options.AddPolicy("batch", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 5,
+                Window = TimeSpan.FromMinutes(1),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0,
+            }));
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+});
+
 var app = builder.Build();
 
 // Middleware pipeline
+app.UseForwardedHeaders();
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 app.UseHttpsRedirection();
@@ -76,7 +106,9 @@ if (app.Environment.IsDevelopment())
 
 // API key authentication — validates X-Api-Key header. Skips /health and /openapi.
 // When no keys are configured (Auth:ApiKeys empty), all requests pass (dev mode).
+// Must run before UseRateLimiter so unauthenticated requests don't consume rate limit slots.
 app.UseApiKeyAuth();
+app.UseRateLimiter();
 
 // Endpoints
 app.MapHealthChecks("/health");

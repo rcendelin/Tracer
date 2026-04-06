@@ -107,11 +107,28 @@ public sealed class TraceRequest : BaseEntity, IAggregateRoot
     /// </exception>
     public void MarkInProgress()
     {
-        if (Status != TraceStatus.Pending)
+        if (Status != TraceStatus.Pending && Status != TraceStatus.Queued)
             throw new InvalidOperationException(
                 $"Cannot mark trace request as in-progress. Current status: {Status}.");
 
         Status = TraceStatus.InProgress;
+    }
+
+    /// <summary>
+    /// Transitions a newly created request to <see cref="TraceStatus.Queued"/>,
+    /// indicating it has been submitted to the Service Bus queue for async processing.
+    /// Call immediately after construction for batch submissions.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when the request is not in <see cref="TraceStatus.Pending"/> state.
+    /// </exception>
+    public void MarkQueued()
+    {
+        if (Status != TraceStatus.Pending)
+            throw new InvalidOperationException(
+                $"Cannot mark trace request as queued. Current status: {Status}.");
+
+        Status = TraceStatus.Queued;
     }
 
     /// <summary>

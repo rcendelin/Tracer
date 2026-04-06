@@ -26,4 +26,12 @@ public enum TraceStatus
     /// and duplicate detection scenarios in the batch pipeline.
     /// </summary>
     Cancelled = 5,
+
+    /// <summary>
+    /// Request was submitted via the batch endpoint and is waiting in the Service Bus queue.
+    /// Transitions to <see cref="InProgress"/> when the consumer picks it up.
+    /// Unlike <see cref="Pending"/>, no synchronous enrichment is started — the request
+    /// will be processed asynchronously by <c>ServiceBusConsumer</c>.
+    /// </summary>
+    Queued = 6,
 }

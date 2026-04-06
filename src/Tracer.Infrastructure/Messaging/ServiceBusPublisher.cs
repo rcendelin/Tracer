@@ -14,6 +14,7 @@ namespace Tracer.Infrastructure.Messaging;
 internal sealed partial class ServiceBusPublisher : IServiceBusPublisher, IAsyncDisposable
 {
     private readonly ServiceBusClient _client;
+    private readonly ServiceBusSender _requestSender;
     private readonly ServiceBusSender _responseSender;
     private readonly ServiceBusSender _changesSender;
     private readonly ILogger<ServiceBusPublisher> _logger;
@@ -32,6 +33,7 @@ internal sealed partial class ServiceBusPublisher : IServiceBusPublisher, IAsync
         _logger = logger;
 
         var config = options.Value;
+        _requestSender = client.CreateSender(config.RequestQueue);
         _responseSender = client.CreateSender(config.ResponseQueue);
         _changesSender = client.CreateSender(config.ChangesTopic);
     }
@@ -78,11 +80,36 @@ internal sealed partial class ServiceBusPublisher : IServiceBusPublisher, IAsync
         LogChangePublished(message.NormalizedKey, fieldStr, severityStr);
     }
 
+    public async Task EnqueueTraceRequestAsync(TraceRequestMessage message, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+
+        var sbMessage = new ServiceBusMessage(
+            BinaryData.FromObjectAsJson(message, JsonOptions))
+        {
+            ContentType = "application/json",
+            // MessageId = CorrelationId enables Service Bus duplicate detection:
+            // re-sending the same batch won't create duplicate TraceRequests if the
+            // queue has RequiresDuplicateDetection=true (configured in Bicep).
+            MessageId = message.CorrelationId,
+            CorrelationId = message.CorrelationId,
+            Subject = "TraceRequest",
+        };
+
+        await _requestSender.SendMessageAsync(sbMessage, cancellationToken).ConfigureAwait(false);
+
+        LogRequestEnqueued(message.CorrelationId);
+    }
+
     public async ValueTask DisposeAsync()
     {
+        await _requestSender.DisposeAsync().ConfigureAwait(false);
         await _responseSender.DisposeAsync().ConfigureAwait(false);
         await _changesSender.DisposeAsync().ConfigureAwait(false);
     }
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Service Bus: Enqueued trace request with correlation {CorrelationId}")]
+    private partial void LogRequestEnqueued(string correlationId);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Service Bus: Sent trace response for correlation {CorrelationId}")]
     private partial void LogResponseSent(string correlationId);

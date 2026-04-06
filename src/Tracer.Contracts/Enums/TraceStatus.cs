@@ -30,4 +30,12 @@ public enum TraceStatus
 
     /// <summary>Request was explicitly cancelled before or during processing.</summary>
     Cancelled = 5,
+
+    /// <summary>
+    /// Request was submitted via the batch API endpoint and is waiting in the Service Bus queue.
+    /// Will transition to <see cref="InProgress"/> when the Tracer consumer picks it up.
+    /// Batch submissions return this status immediately — poll <c>GET /api/trace/{traceId}</c>
+    /// for the final result.
+    /// </summary>
+    Queued = 6,
 }
