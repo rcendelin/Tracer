@@ -68,6 +68,7 @@ app.UseApiKeyAuth();
 app.MapHealthChecks("/health");
 app.MapTraceEndpoints();
 app.MapProfileEndpoints();
+app.MapStatsEndpoints();
 
 app.Run();
 
