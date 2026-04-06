@@ -9,6 +9,7 @@ using Tracer.Infrastructure.Providers.GleifLei;
 using Tracer.Infrastructure.Providers.GoogleMaps;
 using Tracer.Infrastructure.Providers.AzureMaps;
 using Tracer.Infrastructure.Messaging;
+using Tracer.Application.Services;
 using Tracer.Application.Messaging;
 using Azure.Messaging.ServiceBus;
 using Microsoft.Extensions.Configuration;
@@ -112,6 +113,19 @@ public static class InfrastructureServiceRegistration
             options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(5);
             options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(15);
             options.Retry.MaxRetryAttempts = 2;
+        });
+
+        // Webhook callback client with retry (3x exponential backoff)
+        services.AddHttpClient<IWebhookCallbackService, Webhooks.WebhookCallbackService>(client =>
+        {
+            client.Timeout = Timeout.InfiniteTimeSpan;
+        })
+        .AddStandardResilienceHandler(options =>
+        {
+            options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(30);
+            options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(90);
+            options.Retry.MaxRetryAttempts = 3;
+            options.Retry.Delay = TimeSpan.FromSeconds(2);
         });
 
         // Enrichment providers

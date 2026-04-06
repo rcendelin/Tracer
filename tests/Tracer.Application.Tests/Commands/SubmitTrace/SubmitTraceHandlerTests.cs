@@ -17,9 +17,10 @@ public sealed class SubmitTraceHandlerTests
     private readonly ITraceRequestRepository _traceRequestRepo = Substitute.For<ITraceRequestRepository>();
     private readonly IUnitOfWork _unitOfWork = Substitute.For<IUnitOfWork>();
     private readonly IWaterfallOrchestrator _orchestrator = Substitute.For<IWaterfallOrchestrator>();
+    private readonly IWebhookCallbackService _webhookService = Substitute.For<IWebhookCallbackService>();
     private readonly ILogger<SubmitTraceHandler> _logger = Substitute.For<ILogger<SubmitTraceHandler>>();
 
-    private SubmitTraceHandler CreateSut() => new(_traceRequestRepo, _unitOfWork, _orchestrator, _logger);
+    private SubmitTraceHandler CreateSut() => new(_traceRequestRepo, _unitOfWork, _orchestrator, _webhookService, _logger);
 
     private static SubmitTraceCommand CreateCommand(string companyName = "Acme s.r.o.", string source = "rest-api") =>
         new()
