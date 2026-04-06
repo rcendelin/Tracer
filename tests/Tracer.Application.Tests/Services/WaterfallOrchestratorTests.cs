@@ -1,4 +1,5 @@
 using FluentAssertions;
+using MediatR;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 using Tracer.Application.Services;
@@ -11,11 +12,13 @@ namespace Tracer.Application.Tests.Services;
 public sealed class WaterfallOrchestratorTests
 {
     private readonly ICompanyProfileRepository _profileRepo = Substitute.For<ICompanyProfileRepository>();
-    private readonly IUnitOfWork _unitOfWork = Substitute.For<IUnitOfWork>();
+    private readonly IGoldenRecordMerger _merger = new GoldenRecordMerger(new ConfidenceScorer());
+    private readonly ICkbPersistenceService _persistenceService = Substitute.For<ICkbPersistenceService>();
+    private readonly IMediator _mediator = Substitute.For<IMediator>();
     private readonly ILogger<WaterfallOrchestrator> _logger = Substitute.For<ILogger<WaterfallOrchestrator>>();
 
     private WaterfallOrchestrator CreateSut(params IEnrichmentProvider[] providers) =>
-        new(providers, _profileRepo, _unitOfWork, _logger);
+        new(providers, _profileRepo, _merger, _persistenceService, _mediator, _logger);
 
     private static TraceRequest CreateRequest(
         string? companyName = "Acme s.r.o.",
@@ -74,8 +77,10 @@ public sealed class WaterfallOrchestratorTests
 
         await sut.ExecuteAsync(CreateRequest(), CancellationToken.None);
 
-        await _profileRepo.Received(1).UpsertAsync(Arg.Any<CompanyProfile>(), Arg.Any<CancellationToken>());
-        await _unitOfWork.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
+        await _persistenceService.Received(1).PersistEnrichmentAsync(
+            Arg.Any<CompanyProfile>(), Arg.Any<IReadOnlyCollection<(string, ProviderResult)>>(),
+            Arg.Any<MergeResult>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+        // Persistence is now handled by CkbPersistenceService (verified above)
     }
 
     [Fact]
