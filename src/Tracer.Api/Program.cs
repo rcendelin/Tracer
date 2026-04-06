@@ -24,6 +24,16 @@ var connectionString = builder.Configuration.GetConnectionString("TracerDb")
     ?? throw new InvalidOperationException("ConnectionStrings:TracerDb is not configured.");
 builder.Services.AddInfrastructure(connectionString);
 
+// Service Bus consumer (optional — only when connection string is configured)
+var sbConnectionString = builder.Configuration.GetConnectionString("ServiceBus");
+if (!string.IsNullOrWhiteSpace(sbConnectionString))
+{
+    builder.Services.AddSingleton(_ => new Azure.Messaging.ServiceBus.ServiceBusClient(sbConnectionString));
+    builder.Services.Configure<Tracer.Infrastructure.Messaging.ServiceBusOptions>(
+        builder.Configuration.GetSection("ServiceBus"));
+    builder.Services.AddHostedService<Tracer.Infrastructure.Messaging.ServiceBusConsumer>();
+}
+
 // CORS for Tracer.Web SPA
 var corsOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>();
 if ((corsOrigins is null || corsOrigins.Length == 0) && !builder.Environment.IsDevelopment())
