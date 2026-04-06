@@ -146,10 +146,14 @@ Critical changes → `CriticalChangeNotificationHandler` publishes to Service Bu
 ### Trace (core enrichment)
 
 ```
-POST   /api/trace              Submit enrichment request, returns TraceResult
+POST   /api/trace              Submit enrichment request, returns TraceResult (201 Created)
 GET    /api/trace/{traceId}    Get trace status and results
-POST   /api/trace/batch        Submit batch (array of requests), returns TraceId[]
+POST   /api/trace/batch        Submit batch (≤200 items), returns BatchTraceResultDto (202 Accepted)
 ```
+
+**Batch endpoint semantics:** Persist-all-then-publish pattern — all `TraceRequest` entities are saved in one transaction (`TraceStatus.Queued = 6`), then each is published to the `tracer-request` Service Bus queue (best-effort). Items that fail to publish return `TraceStatus.Failed` in the response so the caller can identify them. Items stuck in `Queued` status (publish failed, DB persisted) are candidates for future reconciliation. Caller can supply `CorrelationId` per item; it is echoed back in `BatchTraceItemDto` for request-reply matching.
+
+Rate limited: 5 requests/minute per IP (`"batch"` policy, `FixedWindow`, `QueueLimit = 0` → immediate 429, no queuing).
 
 ### Profiles (CKB)
 
@@ -250,6 +254,9 @@ Two modes: Lightweight (re-check only expired fields against primary registry) a
 - **NormalizedKey format:** `{CountryCode}:{RegistrationId}` (colon separator, e.g. `"CZ:00177041"`). Stable identifier — survives company renames.
 - **Enum mirroring rule** — `Tracer.Contracts.Enums` mirrors `Tracer.Domain.Enums` by integer value. When adding a Domain enum member, add the matching member to Contracts with the same int value. `MapEnum<,>` in `ContractMappingExtensions` throws `InvalidOperationException` at runtime if values drift.
 - Dead-letter error descriptions use exception type name only (no `ex.Message`) — raw messages can expose internal paths/connection strings (CWE-209). Full exception is always in structured logs.
+- **Middleware order constraint** — `app.UseApiKeyAuth()` must come before `app.UseRateLimiter()`. If reversed, unauthenticated requests consume rate limit slots before being rejected.
+- **ForwardedHeaders required for rate limiting** — behind Azure App Service / Front Door, `RemoteIpAddress` is the proxy IP without `app.UseForwardedHeaders()`. Configure `KnownIPNetworks` with RFC 1918 ranges; use `System.Net.IPNetwork.Parse("10.0.0.0/8")` (.NET 10 API — the old `Microsoft.AspNetCore.HttpOverrides.IPNetwork` is deprecated).
+- **`TraceStatus.Queued = 6`** — added for batch submissions waiting in Service Bus queue. `MarkQueued()` transitions from `Pending`. `MarkInProgress()` accepts both `Pending` and `Queued` (Service Bus consumer picks up Queued items).
 
 ## Git conventions
 
