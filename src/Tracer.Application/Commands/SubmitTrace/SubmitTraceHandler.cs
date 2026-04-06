@@ -18,17 +18,20 @@ public sealed partial class SubmitTraceHandler : IRequestHandler<SubmitTraceComm
     private readonly ITraceRequestRepository _traceRequestRepository;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IWaterfallOrchestrator _orchestrator;
+    private readonly IWebhookCallbackService _webhookService;
     private readonly ILogger<SubmitTraceHandler> _logger;
 
     public SubmitTraceHandler(
         ITraceRequestRepository traceRequestRepository,
         IUnitOfWork unitOfWork,
         IWaterfallOrchestrator orchestrator,
+        IWebhookCallbackService webhookService,
         ILogger<SubmitTraceHandler> logger)
     {
         _traceRequestRepository = traceRequestRepository;
         _unitOfWork = unitOfWork;
         _orchestrator = orchestrator;
+        _webhookService = webhookService;
         _logger = logger;
     }
 
@@ -77,7 +80,16 @@ public sealed partial class SubmitTraceHandler : IRequestHandler<SubmitTraceComm
         // even if the original token has been cancelled.
         await _unitOfWork.SaveChangesAsync(CancellationToken.None).ConfigureAwait(false);
 
-        return traceRequest.ToResultDto(profile);
+        var result = traceRequest.ToResultDto(profile);
+
+        // Webhook callback (fire-and-forget — failures logged, not propagated)
+        if (traceRequest.CallbackUrl is not null)
+        {
+            await _webhookService.SendCallbackAsync(
+                traceRequest.CallbackUrl, result, CancellationToken.None).ConfigureAwait(false);
+        }
+
+        return result;
     }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Trace {TraceId} completed for {NormalizedKey} with confidence {Confidence}")]
