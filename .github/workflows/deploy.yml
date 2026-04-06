@@ -1,0 +1,119 @@
+name: Deploy to Azure
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'test'
+        type: choice
+        options:
+          - test
+          - prod
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  DOTNET_VERSION: '10.0.x'
+  NODE_VERSION: '22'
+  AZURE_RESOURCE_GROUP: 'rg-tracer-${{ inputs.environment || ''test'' }}'
+
+jobs:
+  build-api:
+    name: Build API
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Publish API
+        run: dotnet publish src/Tracer.Api/Tracer.Api.csproj --configuration Release --output ./publish/api
+
+      - name: Upload API artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-artifact
+          path: ./publish/api
+
+  build-web:
+    name: Build Web
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/Tracer.Web
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: src/Tracer.Web/package-lock.json
+
+      - name: Install & Build
+        run: |
+          npm ci
+          npx --no-install vite build
+
+      - name: Upload Web artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-artifact
+          path: src/Tracer.Web/dist
+
+  deploy-api:
+    name: Deploy API to App Service
+    needs: build-api
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment || 'test' }}
+    steps:
+      - name: Download API artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: api-artifact
+          path: ./api
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy to App Service
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: 'tracer-${{ inputs.environment || ''test'' }}-api'
+          package: ./api
+
+  deploy-web:
+    name: Deploy Web to Static Web App
+    needs: build-web
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment || 'test' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Web artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: web-artifact
+          path: ./web
+
+      - name: Deploy to Static Web App
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.SWA_DEPLOYMENT_TOKEN }}
+          action: 'upload'
+          app_location: './web'
+          skip_app_build: true
