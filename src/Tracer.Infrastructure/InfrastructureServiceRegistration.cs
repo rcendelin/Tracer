@@ -15,6 +15,7 @@ using Azure.Messaging.ServiceBus;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Tracer.Infrastructure.Providers.CompaniesHouse;
+using Tracer.Infrastructure.Providers.AbnLookup;
 
 namespace Tracer.Infrastructure;
 
@@ -153,12 +154,32 @@ public static class InfrastructureServiceRegistration
             options.Retry.MaxRetryAttempts = 3;
         });
 
+        // ABN Lookup (Australia) — optional, requires GUID
+        services.AddHttpClient<IAbnLookupClient, AbnLookupClient>((sp, client) =>
+        {
+            var abnConfig = sp.GetRequiredService<IConfiguration>();
+            var guid = abnConfig["Providers:AbnLookup:Guid"] ?? string.Empty;
+
+            client.BaseAddress = new Uri("https://abr.business.gov.au/json/");
+            client.Timeout = Timeout.InfiniteTimeSpan;
+
+            if (!string.IsNullOrWhiteSpace(guid))
+                client.DefaultRequestHeaders.Add("X-Abn-Guid", guid);
+        })
+        .AddStandardResilienceHandler(options =>
+        {
+            options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(10);
+            options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(30);
+            options.Retry.MaxRetryAttempts = 3;
+        });
+
         // Enrichment providers
         services.AddTransient<IEnrichmentProvider, AresProvider>();
         services.AddTransient<IEnrichmentProvider, GleifProvider>();
         services.AddTransient<IEnrichmentProvider, GoogleMapsProvider>();
         services.AddTransient<IEnrichmentProvider, AzureMapsProvider>();
         services.AddTransient<IEnrichmentProvider, CompaniesHouseProvider>();
+        services.AddTransient<IEnrichmentProvider, AbnLookupProvider>();
 
         // Service Bus (optional — activated only if connection string is configured)
         services.AddSingleton<IServiceBusPublisher>(sp =>
