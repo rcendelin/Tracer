@@ -1,19 +1,6 @@
-using Tracer.Application.DTOs;
-
-namespace Tracer.Application.Messaging;
-
-/// <summary>
-/// Message received from the <c>tracer-request</c> queue.
-/// Sent by FieldForce or other upstream services to request enrichment.
-/// </summary>
-public sealed record TraceRequestMessage
-{
-    /// <summary>Correlation ID for request-reply pattern.</summary>
-    public required string CorrelationId { get; init; }
-
-    /// <summary>The trace request input.</summary>
-    public required TraceRequestDto Input { get; init; }
-
-    /// <summary>Source of the request (e.g. "service-bus", "fieldforce").</summary>
-    public string Source { get; init; } = "service-bus";
-}
+// Message contracts are defined in Tracer.Contracts.Messages (the shared NuGet package).
+// These global aliases make them available throughout Tracer.Application without
+// requiring an explicit 'using Tracer.Contracts.Messages;' in every file.
+global using TraceRequestMessage = Tracer.Contracts.Messages.TraceRequestMessage;
+global using TraceResponseMessage = Tracer.Contracts.Messages.TraceResponseMessage;
+global using ChangeEventMessage = Tracer.Contracts.Messages.ChangeEventMessage;

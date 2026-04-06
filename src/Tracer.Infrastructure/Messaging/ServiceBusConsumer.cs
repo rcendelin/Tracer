@@ -6,7 +6,9 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Tracer.Application.Commands.SubmitTrace;
+using Tracer.Application.Mapping;
 using Tracer.Application.Messaging;
+using Tracer.Contracts.Messages;
 
 namespace Tracer.Infrastructure.Messaging;
 
@@ -80,13 +82,14 @@ public sealed partial class ServiceBusConsumer : BackgroundService, IAsyncDispos
         {
             LogMessageReceived(correlationId);
 
+            // Deserialize using Tracer.Contracts.Messages.TraceRequestMessage
             var requestMessage = args.Message.Body.ToObjectFromJson<TraceRequestMessage>(JsonOptions);
-            if (requestMessage?.Input is null)
+            if (requestMessage is null)
             {
                 LogInvalidMessage(correlationId);
                 await args.DeadLetterMessageAsync(args.Message,
                     deadLetterReason: "InvalidMessage",
-                    deadLetterErrorDescription: "Could not deserialize TraceRequestMessage or Input is null.")
+                    deadLetterErrorDescription: "Could not deserialize TraceRequestMessage.")
                     .ConfigureAwait(false);
                 return;
             }
@@ -97,19 +100,19 @@ public sealed partial class ServiceBusConsumer : BackgroundService, IAsyncDispos
             var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
             var publisher = scope.ServiceProvider.GetRequiredService<IServiceBusPublisher>();
 
+            // Map Contracts.Messages.TraceRequestMessage → SubmitTraceCommand via internal DTO
             var command = new SubmitTraceCommand
             {
-                Input = requestMessage.Input,
+                Input = requestMessage.ToTraceRequestDto(),
                 Source = requestMessage.Source,
             };
 
             var result = await mediator.Send(command, args.CancellationToken).ConfigureAwait(false);
 
-            await publisher.SendTraceResponseAsync(new TraceResponseMessage
-            {
-                CorrelationId = correlationId,
-                Result = result,
-            }, args.CancellationToken).ConfigureAwait(false);
+            // Map TraceResultDto → Contracts.Messages.TraceResponseMessage for Service Bus reply
+            await publisher.SendTraceResponseAsync(
+                result.ToResponseMessage(correlationId),
+                args.CancellationToken).ConfigureAwait(false);
 
             await args.CompleteMessageAsync(args.Message).ConfigureAwait(false);
 
@@ -122,7 +125,9 @@ public sealed partial class ServiceBusConsumer : BackgroundService, IAsyncDispos
 
             try
             {
-                var errorDesc = ex.Message.Length > 500 ? ex.Message[..500] : ex.Message;
+                // Use the exception type name only — full details are already in the structured log above.
+                // Raw ex.Message can expose internal paths or connection strings (CWE-209).
+                var errorDesc = $"Processing failed: {ex.GetType().Name}. Correlation: {correlationId}";
                 await args.DeadLetterMessageAsync(args.Message,
                     deadLetterReason: "ProcessingFailed",
                     deadLetterErrorDescription: errorDesc)

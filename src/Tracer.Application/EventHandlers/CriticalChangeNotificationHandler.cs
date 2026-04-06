@@ -1,11 +1,12 @@
 using MediatR;
 using Microsoft.Extensions.Logging;
 using Tracer.Application.DTOs;
+using Tracer.Application.Mapping;
 using Tracer.Application.Messaging;
 using Tracer.Application.Services;
-using Tracer.Domain.Enums;
 using Tracer.Domain.Events;
 using Tracer.Domain.Interfaces;
+using DomainEnums = Tracer.Domain.Enums;
 
 namespace Tracer.Application.EventHandlers;
 
@@ -39,7 +40,7 @@ public sealed partial class CriticalChangeNotificationHandler
 
         LogCriticalChangeReceived(notification.CompanyProfileId, notification.Field);
 
-        // Load profile for NormalizedKey (needed by ChangeEventMessage)
+        // Load profile for NormalizedKey (required by ChangeEventMessage)
         var profile = await _profileRepository
             .GetByIdAsync(notification.CompanyProfileId, cancellationToken)
             .ConfigureAwait(false);
@@ -50,29 +51,30 @@ public sealed partial class CriticalChangeNotificationHandler
             return;
         }
 
+        // Build internal DTO for SignalR notification (carries IsNotified state)
         var changeEventDto = new ChangeEventDto
         {
             Id = notification.ChangeEventId,
             CompanyProfileId = notification.CompanyProfileId,
             Field = notification.Field,
-            ChangeType = ChangeType.Updated,
-            Severity = ChangeSeverity.Critical,
+            ChangeType = DomainEnums.ChangeType.Updated,
+            Severity = DomainEnums.ChangeSeverity.Critical,
             NewValueJson = notification.NewValueJson,
             DetectedBy = "change-detector",
             DetectedAt = DateTimeOffset.UtcNow,
         };
 
-        // Publish to Service Bus topic
+        // Publish to Service Bus topic using Contracts message type
         var message = new ChangeEventMessage
         {
-            ChangeEvent = changeEventDto,
+            ChangeEvent = changeEventDto.ToContract(),
             CompanyProfileId = notification.CompanyProfileId,
             NormalizedKey = profile.NormalizedKey,
         };
 
         await _serviceBus.PublishChangeEventAsync(message, cancellationToken).ConfigureAwait(false);
 
-        // Push SignalR notification
+        // Push SignalR notification using internal DTO
         await _signalR.NotifyChangeDetectedAsync(changeEventDto, cancellationToken).ConfigureAwait(false);
 
         LogCriticalChangePublished(profile.NormalizedKey, notification.Field);
@@ -80,7 +82,7 @@ public sealed partial class CriticalChangeNotificationHandler
 
     [LoggerMessage(Level = LogLevel.Warning,
         Message = "Critical change detected on profile {ProfileId}, field {Field}")]
-    private partial void LogCriticalChangeReceived(Guid profileId, FieldName field);
+    private partial void LogCriticalChangeReceived(Guid profileId, DomainEnums.FieldName field);
 
     [LoggerMessage(Level = LogLevel.Warning,
         Message = "Profile {ProfileId} not found for critical change notification")]
@@ -88,5 +90,5 @@ public sealed partial class CriticalChangeNotificationHandler
 
     [LoggerMessage(Level = LogLevel.Information,
         Message = "Critical change published to Service Bus + SignalR: {NormalizedKey}, field {Field}")]
-    private partial void LogCriticalChangePublished(string normalizedKey, FieldName field);
+    private partial void LogCriticalChangePublished(string normalizedKey, DomainEnums.FieldName field);
 }

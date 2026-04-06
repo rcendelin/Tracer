@@ -12,6 +12,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Tracer.Contracts\Tracer.Contracts.csproj" />
     <ProjectReference Include="..\Tracer.Domain\Tracer.Domain.csproj" />
   </ItemGroup>
 

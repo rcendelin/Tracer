@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/Tracer.Api/Tracer.Api.csproj" />
     <Project Path="src/Tracer.Application/Tracer.Application.csproj" />
+    <Project Path="src/Tracer.Contracts/Tracer.Contracts.csproj" />
     <Project Path="src/Tracer.Domain/Tracer.Domain.csproj" />
     <Project Path="src/Tracer.Infrastructure/Tracer.Infrastructure.csproj" />
   </Folder>

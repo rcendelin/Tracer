@@ -3,6 +3,7 @@ using Azure.Messaging.ServiceBus;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Tracer.Application.Messaging;
+using Tracer.Contracts.Messages;
 
 namespace Tracer.Infrastructure.Messaging;
 
@@ -56,24 +57,25 @@ internal sealed partial class ServiceBusPublisher : IServiceBusPublisher, IAsync
     {
         ArgumentNullException.ThrowIfNull(message);
 
+        var severityStr = message.ChangeEvent.Severity.ToString();
+        var fieldStr = message.ChangeEvent.Field.ToString();
+
         var sbMessage = new ServiceBusMessage(
             BinaryData.FromObjectAsJson(message, JsonOptions))
         {
             ContentType = "application/json",
-            Subject = message.ChangeEvent.Severity.ToString(),
+            Subject = severityStr,
             ApplicationProperties =
             {
                 ["CompanyProfileId"] = message.CompanyProfileId.ToString(),
-                ["Field"] = message.ChangeEvent.Field.ToString(),
-                ["Severity"] = message.ChangeEvent.Severity.ToString(),
+                ["Field"] = fieldStr,
+                ["Severity"] = severityStr,
             },
         };
 
         await _changesSender.SendMessageAsync(sbMessage, cancellationToken).ConfigureAwait(false);
 
-        var fieldName = message.ChangeEvent.Field.ToString();
-        var severity = message.ChangeEvent.Severity.ToString();
-        LogChangePublished(message.NormalizedKey, fieldName, severity);
+        LogChangePublished(message.NormalizedKey, fieldStr, severityStr);
     }
 
     public async ValueTask DisposeAsync()

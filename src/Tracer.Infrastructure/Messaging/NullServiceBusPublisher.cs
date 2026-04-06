@@ -1,4 +1,5 @@
 using Tracer.Application.Messaging;
+using Tracer.Contracts.Messages;
 
 namespace Tracer.Infrastructure.Messaging;
 

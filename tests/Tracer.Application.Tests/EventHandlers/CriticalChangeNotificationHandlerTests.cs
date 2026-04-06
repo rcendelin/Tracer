@@ -5,10 +5,13 @@ using Tracer.Application.DTOs;
 using Tracer.Application.EventHandlers;
 using Tracer.Application.Messaging;
 using Tracer.Application.Services;
+using Tracer.Contracts.Enums;
+using Tracer.Contracts.Messages;
+using Tracer.Contracts.Models;
 using Tracer.Domain.Entities;
-using Tracer.Domain.Enums;
 using Tracer.Domain.Events;
 using Tracer.Domain.Interfaces;
+using DomainEnums = Tracer.Domain.Enums;
 
 namespace Tracer.Application.Tests.EventHandlers;
 
@@ -31,7 +34,7 @@ public sealed class CriticalChangeNotificationHandlerTests
         var profile = CreateProfile();
         var changeEventId = Guid.NewGuid();
         var notification = new CriticalChangeDetectedEvent(
-            profile.Id, changeEventId, FieldName.EntityStatus, "\"Dissolved\"");
+            profile.Id, changeEventId, DomainEnums.FieldName.EntityStatus, "\"Dissolved\"");
 
         _profileRepo.GetByIdAsync(profile.Id, Arg.Any<CancellationToken>())
             .Returns(profile);
@@ -53,7 +56,7 @@ public sealed class CriticalChangeNotificationHandlerTests
         var sut = CreateSut();
         var profile = CreateProfile();
         var notification = new CriticalChangeDetectedEvent(
-            profile.Id, Guid.NewGuid(), FieldName.EntityStatus, "\"In Liquidation\"");
+            profile.Id, Guid.NewGuid(), DomainEnums.FieldName.EntityStatus, "\"In Liquidation\"");
 
         _profileRepo.GetByIdAsync(profile.Id, Arg.Any<CancellationToken>())
             .Returns(profile);
@@ -62,8 +65,8 @@ public sealed class CriticalChangeNotificationHandlerTests
 
         await _signalR.Received(1).NotifyChangeDetectedAsync(
             Arg.Is<ChangeEventDto>(dto =>
-                dto.Severity == ChangeSeverity.Critical &&
-                dto.Field == FieldName.EntityStatus),
+                dto.Severity == DomainEnums.ChangeSeverity.Critical &&
+                dto.Field == DomainEnums.FieldName.EntityStatus),
             Arg.Any<CancellationToken>());
     }
 
@@ -72,7 +75,7 @@ public sealed class CriticalChangeNotificationHandlerTests
     {
         var sut = CreateSut();
         var notification = new CriticalChangeDetectedEvent(
-            Guid.NewGuid(), Guid.NewGuid(), FieldName.EntityStatus, "\"Dissolved\"");
+            Guid.NewGuid(), Guid.NewGuid(), DomainEnums.FieldName.EntityStatus, "\"Dissolved\"");
 
         _profileRepo.GetByIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
             .Returns((CompanyProfile?)null);
@@ -102,7 +105,7 @@ public sealed class CriticalChangeNotificationHandlerTests
         var profile = CreateProfile();
         var changeEventId = Guid.NewGuid();
         var notification = new CriticalChangeDetectedEvent(
-            profile.Id, changeEventId, FieldName.EntityStatus, "\"Dissolved\"");
+            profile.Id, changeEventId, DomainEnums.FieldName.EntityStatus, "\"Dissolved\"");
 
         _profileRepo.GetByIdAsync(profile.Id, Arg.Any<CancellationToken>())
             .Returns(profile);
