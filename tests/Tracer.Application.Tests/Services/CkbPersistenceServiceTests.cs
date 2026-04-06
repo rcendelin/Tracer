@@ -15,10 +15,11 @@ public sealed class CkbPersistenceServiceTests
     private readonly IChangeEventRepository _changeEventRepo = Substitute.For<IChangeEventRepository>();
     private readonly IUnitOfWork _unitOfWork = Substitute.For<IUnitOfWork>();
     private readonly IConfidenceScorer _scorer = new ConfidenceScorer();
+    private readonly IProfileCacheService _cache = Substitute.For<IProfileCacheService>();
     private readonly ILogger<CkbPersistenceService> _logger = Substitute.For<ILogger<CkbPersistenceService>>();
 
     private CkbPersistenceService CreateSut() =>
-        new(_profileRepo, _changeEventRepo, _unitOfWork, _scorer, _logger);
+        new(_profileRepo, _changeEventRepo, _unitOfWork, _scorer, _cache, _logger);
 
     private static CompanyProfile CreateProfile() => new("CZ:12345678", "CZ", "12345678");
 

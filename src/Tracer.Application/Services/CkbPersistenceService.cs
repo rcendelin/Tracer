@@ -16,6 +16,7 @@ public sealed partial class CkbPersistenceService : ICkbPersistenceService
     private readonly IChangeEventRepository _changeEventRepository;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IConfidenceScorer _scorer;
+    private readonly IProfileCacheService _cache;
     private readonly ILogger<CkbPersistenceService> _logger;
 
     public CkbPersistenceService(
@@ -23,12 +24,14 @@ public sealed partial class CkbPersistenceService : ICkbPersistenceService
         IChangeEventRepository changeEventRepository,
         IUnitOfWork unitOfWork,
         IConfidenceScorer scorer,
+        IProfileCacheService cache,
         ILogger<CkbPersistenceService> logger)
     {
         _profileRepository = profileRepository;
         _changeEventRepository = changeEventRepository;
         _unitOfWork = unitOfWork;
         _scorer = scorer;
+        _cache = cache;
         _logger = logger;
     }
 
@@ -62,6 +65,9 @@ public sealed partial class CkbPersistenceService : ICkbPersistenceService
 
         // 5. Save all changes
         await _unitOfWork.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+        // 6. Invalidate cache (so next Quick depth fetch gets fresh data)
+        await _cache.RemoveAsync(profile.NormalizedKey, cancellationToken).ConfigureAwait(false);
 
         LogPersistenceComplete(profile.NormalizedKey, changeEvents.Count, overallConfidence.Value);
     }
