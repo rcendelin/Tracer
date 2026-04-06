@@ -14,6 +14,7 @@ using Tracer.Application.Messaging;
 using Azure.Messaging.ServiceBus;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Tracer.Infrastructure.Providers.CompaniesHouse;
 
 namespace Tracer.Infrastructure;
 
@@ -128,11 +129,36 @@ public static class InfrastructureServiceRegistration
             options.Retry.Delay = TimeSpan.FromSeconds(2);
         });
 
+        // Companies House API (UK) — optional, requires API key
+        services.AddHttpClient<ICompaniesHouseClient, CompaniesHouseClient>((sp, client) =>
+        {
+            var chConfig = sp.GetRequiredService<IConfiguration>();
+            var apiKey = chConfig["Providers:CompaniesHouse:ApiKey"] ?? string.Empty;
+
+            client.BaseAddress = new Uri("https://api.company-information.service.gov.uk/");
+            client.Timeout = Timeout.InfiniteTimeSpan;
+
+            if (!string.IsNullOrWhiteSpace(apiKey))
+            {
+                var credentials = Convert.ToBase64String(
+                    System.Text.Encoding.ASCII.GetBytes($"{apiKey}:"));
+                client.DefaultRequestHeaders.Authorization =
+                    new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", credentials);
+            }
+        })
+        .AddStandardResilienceHandler(options =>
+        {
+            options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(10);
+            options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(30);
+            options.Retry.MaxRetryAttempts = 3;
+        });
+
         // Enrichment providers
         services.AddTransient<IEnrichmentProvider, AresProvider>();
         services.AddTransient<IEnrichmentProvider, GleifProvider>();
         services.AddTransient<IEnrichmentProvider, GoogleMapsProvider>();
         services.AddTransient<IEnrichmentProvider, AzureMapsProvider>();
+        services.AddTransient<IEnrichmentProvider, CompaniesHouseProvider>();
 
         // Service Bus (optional — activated only if connection string is configured)
         services.AddSingleton<IServiceBusPublisher>(sp =>
