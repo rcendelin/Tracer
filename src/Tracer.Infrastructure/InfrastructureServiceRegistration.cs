@@ -8,6 +8,11 @@ using Tracer.Infrastructure.Providers.Ares;
 using Tracer.Infrastructure.Providers.GleifLei;
 using Tracer.Infrastructure.Providers.GoogleMaps;
 using Tracer.Infrastructure.Providers.AzureMaps;
+using Tracer.Infrastructure.Messaging;
+using Tracer.Application.Messaging;
+using Azure.Messaging.ServiceBus;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace Tracer.Infrastructure;
 
@@ -114,6 +119,22 @@ public static class InfrastructureServiceRegistration
         services.AddTransient<IEnrichmentProvider, GleifProvider>();
         services.AddTransient<IEnrichmentProvider, GoogleMapsProvider>();
         services.AddTransient<IEnrichmentProvider, AzureMapsProvider>();
+
+        // Service Bus (optional — registered lazily, activated only if connection string is configured)
+        services.AddSingleton<IServiceBusPublisher>(sp =>
+        {
+            var sbConfig = sp.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>();
+            var sbConnectionString = sbConfig["ConnectionStrings:ServiceBus"];
+            if (string.IsNullOrWhiteSpace(sbConnectionString))
+                return new NullServiceBusPublisher();
+
+            var client = new ServiceBusClient(sbConnectionString);
+            var sbOptions = new ServiceBusOptions();
+            sbConfig.GetSection(ServiceBusOptions.SectionName).Bind(sbOptions);
+            var optionsWrapper = Microsoft.Extensions.Options.Options.Create(sbOptions);
+            var logger = sp.GetRequiredService<ILogger<ServiceBusPublisher>>();
+            return new ServiceBusPublisher(client, optionsWrapper, logger);
+        });
 
         return services;
     }
