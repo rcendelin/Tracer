@@ -42,6 +42,10 @@ public static class InfrastructureServiceRegistration
             }));
 
         services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<TracerDbContext>());
+
+        // Distributed cache (in-memory for MVP, switch to Redis in Phase 4)
+        services.AddDistributedMemoryCache();
+        services.AddSingleton<IProfileCacheService, Caching.ProfileCacheService>();
         services.AddScoped<ITraceRequestRepository, TraceRequestRepository>();
         services.AddScoped<ICompanyProfileRepository, CompanyProfileRepository>();
         services.AddScoped<IChangeEventRepository, ChangeEventRepository>();
