@@ -27,6 +27,7 @@ public static class ApplicationServiceRegistration
         services.AddSingleton<IConfidenceScorer, ConfidenceScorer>();
         services.AddSingleton<IGoldenRecordMerger, GoldenRecordMerger>();
         services.AddScoped<IEntityResolver, EntityResolver>();
+        services.AddSingleton<IChangeDetector, ChangeDetector>();
         services.AddScoped<ICkbPersistenceService, CkbPersistenceService>();
 
         return services;

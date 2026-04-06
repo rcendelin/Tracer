@@ -1,8 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Tracer.Domain.Entities;
-using Tracer.Domain.Enums;
 using Tracer.Domain.Interfaces;
-using Tracer.Domain.ValueObjects;
 
 namespace Tracer.Application.Services;
 
@@ -16,6 +14,7 @@ public sealed partial class CkbPersistenceService : ICkbPersistenceService
     private readonly IChangeEventRepository _changeEventRepository;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IConfidenceScorer _scorer;
+    private readonly IChangeDetector _changeDetector;
     private readonly IProfileCacheService _cache;
     private readonly ILogger<CkbPersistenceService> _logger;
 
@@ -24,6 +23,7 @@ public sealed partial class CkbPersistenceService : ICkbPersistenceService
         IChangeEventRepository changeEventRepository,
         IUnitOfWork unitOfWork,
         IConfidenceScorer scorer,
+        IChangeDetector changeDetector,
         IProfileCacheService cache,
         ILogger<CkbPersistenceService> logger)
     {
@@ -31,6 +31,7 @@ public sealed partial class CkbPersistenceService : ICkbPersistenceService
         _changeEventRepository = changeEventRepository;
         _unitOfWork = unitOfWork;
         _scorer = scorer;
+        _changeDetector = changeDetector;
         _cache = cache;
         _logger = logger;
     }
@@ -46,8 +47,8 @@ public sealed partial class CkbPersistenceService : ICkbPersistenceService
         ArgumentNullException.ThrowIfNull(sourceResults);
         ArgumentNullException.ThrowIfNull(mergeResult);
 
-        // 1. Apply merged fields to profile, collecting change events
-        var changeEvents = ApplyMergedFields(profile, mergeResult);
+        // 1. Detect changes and apply merged fields to profile
+        var detectionResult = _changeDetector.DetectChanges(profile, mergeResult.BestFields);
 
         // 2. Score overall confidence
         var overallConfidence = _scorer.ScoreOverall(profile);
@@ -58,7 +59,7 @@ public sealed partial class CkbPersistenceService : ICkbPersistenceService
         await _profileRepository.UpsertAsync(profile, cancellationToken).ConfigureAwait(false);
 
         // 4. Persist change events
-        foreach (var changeEvent in changeEvents)
+        foreach (var changeEvent in detectionResult.Changes)
         {
             await _changeEventRepository.AddAsync(changeEvent, cancellationToken).ConfigureAwait(false);
         }
@@ -69,58 +70,7 @@ public sealed partial class CkbPersistenceService : ICkbPersistenceService
         // 6. Invalidate cache (so next Quick depth fetch gets fresh data)
         await _cache.RemoveAsync(profile.NormalizedKey, cancellationToken).ConfigureAwait(false);
 
-        LogPersistenceComplete(profile.NormalizedKey, changeEvents.Count, overallConfidence.Value);
-    }
-
-    private static List<ChangeEvent> ApplyMergedFields(
-        CompanyProfile profile,
-        MergeResult mergeResult)
-    {
-        var changeEvents = new List<ChangeEvent>();
-
-        foreach (var (fieldName, tracedField) in mergeResult.BestFields)
-        {
-            ChangeEvent? changeEvent = null;
-
-            switch (fieldName)
-            {
-                case FieldName.RegisteredAddress or FieldName.OperatingAddress
-                    when tracedField.Value is Address addr:
-                    changeEvent = profile.UpdateField(fieldName, new TracedField<Address>
-                    {
-                        Value = addr,
-                        Confidence = tracedField.Confidence,
-                        Source = tracedField.Source,
-                        EnrichedAt = tracedField.EnrichedAt,
-                    }, tracedField.Source);
-                    break;
-
-                case FieldName.Location when tracedField.Value is GeoCoordinate geo:
-                    changeEvent = profile.UpdateField(fieldName, new TracedField<GeoCoordinate>
-                    {
-                        Value = geo,
-                        Confidence = tracedField.Confidence,
-                        Source = tracedField.Source,
-                        EnrichedAt = tracedField.EnrichedAt,
-                    }, tracedField.Source);
-                    break;
-
-                case var _ when tracedField.Value is string strVal:
-                    changeEvent = profile.UpdateField(fieldName, new TracedField<string>
-                    {
-                        Value = strVal,
-                        Confidence = tracedField.Confidence,
-                        Source = tracedField.Source,
-                        EnrichedAt = tracedField.EnrichedAt,
-                    }, tracedField.Source);
-                    break;
-            }
-
-            if (changeEvent is not null)
-                changeEvents.Add(changeEvent);
-        }
-
-        return changeEvents;
+        LogPersistenceComplete(profile.NormalizedKey, detectionResult.TotalChanges, overallConfidence.Value);
     }
 
     [LoggerMessage(Level = LogLevel.Information,
