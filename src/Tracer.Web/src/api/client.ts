@@ -3,6 +3,7 @@ import type {
   TraceResult,
   CompanyProfile,
   ProfileDetail,
+  DashboardStats,
   ChangeEvent,
   PagedResult,
 } from '../types';
@@ -87,4 +88,9 @@ export const profileApi = {
     fetchApi<{ changes: PagedResult<ChangeEvent>; validations: unknown[] }>(
       `/profiles/${profileId}/history?page=${page}&pageSize=${pageSize}`,
     ),
+};
+
+// Stats endpoints
+export const statsApi = {
+  dashboard: () => fetchApi<DashboardStats>('/stats'),
 };

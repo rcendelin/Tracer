@@ -115,6 +115,13 @@ export interface ProfileDetail {
   recentChanges: ChangeEvent[];
 }
 
+export interface DashboardStats {
+  tracesToday: number;
+  tracesThisWeek: number;
+  totalProfiles: number;
+  averageConfidence: number;
+}
+
 export type TraceStatus = 'Pending' | 'InProgress' | 'Completed' | 'PartiallyCompleted' | 'Failed' | 'Cancelled';
 export type TraceDepth = 'Quick' | 'Standard' | 'Deep';
 export type SourceStatus = 'Unknown' | 'Success' | 'NotFound' | 'Error' | 'Timeout' | 'Skipped';
