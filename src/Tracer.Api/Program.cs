@@ -16,6 +16,10 @@ builder.Host.UseSerilog((ctx, lc) => lc
 // OpenAPI
 builder.Services.AddOpenApi();
 
+// SignalR
+builder.Services.AddSignalR();
+builder.Services.AddScoped<Tracer.Application.Services.ITraceNotificationService, Tracer.Api.Hubs.TraceNotificationService>();
+
 // Application layer: MediatR, FluentValidation, Orchestrator, Scorer, Merger, Resolver, CKB persistence
 builder.Services.AddApplication();
 
@@ -79,6 +83,7 @@ app.MapHealthChecks("/health");
 app.MapTraceEndpoints();
 app.MapProfileEndpoints();
 app.MapStatsEndpoints();
+app.MapHub<Tracer.Api.Hubs.TraceHub>("/hubs/trace");
 
 app.Run();
 
