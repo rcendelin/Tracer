@@ -16,6 +16,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Tracer.Infrastructure.Providers.CompaniesHouse;
 using Tracer.Infrastructure.Providers.AbnLookup;
+using Tracer.Infrastructure.Providers.SecEdgar;
 
 namespace Tracer.Infrastructure;
 
@@ -180,6 +181,22 @@ public static class InfrastructureServiceRegistration
         services.AddTransient<IEnrichmentProvider, AzureMapsProvider>();
         services.AddTransient<IEnrichmentProvider, CompaniesHouseProvider>();
         services.AddTransient<IEnrichmentProvider, AbnLookupProvider>();
+        services.AddTransient<IEnrichmentProvider, SecEdgarProvider>();
+
+        // SEC EDGAR — free API, no key, User-Agent required
+        services.AddHttpClient<ISecEdgarClient, SecEdgarClient>(client =>
+        {
+            client.Timeout = Timeout.InfiniteTimeSpan;
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("Tracer/1.0 (tracer@xtuning.cz)");
+            client.DefaultRequestHeaders.Accept.Add(
+                new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+        })
+        .AddStandardResilienceHandler(options =>
+        {
+            options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(10);
+            options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(30);
+            options.Retry.MaxRetryAttempts = 2;
+        });
 
         // Service Bus (optional — activated only if connection string is configured)
         services.AddSingleton<IServiceBusPublisher>(sp =>
