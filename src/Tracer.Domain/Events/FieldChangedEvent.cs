@@ -15,6 +15,7 @@ namespace Tracer.Domain.Events;
 /// <param name="NewValueJson">JSON-serialised new value, or <see langword="null"/> for deleted fields.</param>
 public sealed record FieldChangedEvent(
     Guid CompanyProfileId,
+    Guid ChangeEventId,
     FieldName Field,
     ChangeType ChangeType,
     ChangeSeverity Severity,

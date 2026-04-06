@@ -1,4 +1,4 @@
-@description('Tracer Infrastructure — Phase 1 MVP')
+@description('Tracer Infrastructure — Phase 2 Async + Sources')
 targetScope = 'resourceGroup'
 
 @description('Environment name (test, prod)')
@@ -74,9 +74,20 @@ module staticWebApp 'modules/static-web-app.bicep' = {
   }
 }
 
+// Service Bus (queues + change notification topic)
+module serviceBus 'modules/service-bus.bicep' = {
+  name: 'serviceBus'
+  params: {
+    location: location
+    namePrefix: namePrefix
+    tags: tags
+  }
+}
+
 // Outputs
 output apiUrl string = 'https://${appService.outputs.appServiceHostName}'
 output webUrl string = 'https://${staticWebApp.outputs.staticWebAppHostName}'
 output sqlServerFqdn string = sqlServer.outputs.serverFqdn
 output keyVaultUri string = keyVault.outputs.vaultUri
 output appInsightsConnectionString string = appInsights.outputs.connectionString
+output serviceBusNamespace string = serviceBus.outputs.namespaceName

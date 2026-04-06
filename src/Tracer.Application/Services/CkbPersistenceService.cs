@@ -64,10 +64,19 @@ public sealed partial class CkbPersistenceService : ICkbPersistenceService
             await _changeEventRepository.AddAsync(changeEvent, cancellationToken).ConfigureAwait(false);
         }
 
-        // 5. Save all changes
+        // 5. Save all changes (dispatches domain events → notification handlers)
         await _unitOfWork.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
-        // 6. Invalidate cache (so next Quick depth fetch gets fresh data)
+        // 6. Mark change events as notified (after dispatch completed successfully)
+        if (detectionResult.TotalChanges > 0)
+        {
+            foreach (var changeEvent in detectionResult.Changes)
+                changeEvent.MarkNotified();
+
+            await _unitOfWork.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        // 7. Invalidate cache (so next Quick depth fetch gets fresh data)
         await _cache.RemoveAsync(profile.NormalizedKey, cancellationToken).ConfigureAwait(false);
 
         LogPersistenceComplete(profile.NormalizedKey, detectionResult.TotalChanges, overallConfidence.Value);

@@ -12,5 +12,6 @@ namespace Tracer.Domain.Events;
 /// <param name="NewValueJson">JSON-serialised new value of the field.</param>
 public sealed record CriticalChangeDetectedEvent(
     Guid CompanyProfileId,
+    Guid ChangeEventId,
     FieldName Field,
     string? NewValueJson) : IDomainEvent;

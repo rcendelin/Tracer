@@ -17,6 +17,13 @@ internal sealed class ChangeEventRepository : IChangeEventRepository
         _db = db;
     }
 
+    public async Task<ChangeEvent?> GetByIdAsync(Guid id, CancellationToken cancellationToken)
+    {
+        return await _db.ChangeEvents
+            .FirstOrDefaultAsync(e => e.Id == id, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     public async Task AddAsync(ChangeEvent changeEvent, CancellationToken cancellationToken)
     {
         await _db.ChangeEvents.AddAsync(changeEvent, cancellationToken).ConfigureAwait(false);

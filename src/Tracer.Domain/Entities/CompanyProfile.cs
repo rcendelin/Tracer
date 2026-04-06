@@ -120,10 +120,10 @@ public sealed class CompanyProfile : BaseEntity, IAggregateRoot
             detectedBy: source);
 
         AddDomainEvent(new FieldChangedEvent(
-            Id, fieldName, changeType, severity, currentJson, newJson));
+            Id, changeEvent.Id, fieldName, changeType, severity, currentJson, newJson));
 
         if (severity == ChangeSeverity.Critical)
-            AddDomainEvent(new CriticalChangeDetectedEvent(Id, fieldName, newJson));
+            AddDomainEvent(new CriticalChangeDetectedEvent(Id, changeEvent.Id, fieldName, newJson));
 
         return changeEvent;
     }

@@ -1,14 +1,12 @@
+using MediatR;
+
 namespace Tracer.Domain.Common;
 
 /// <summary>
-/// Marker interface for domain events. Implementations are raised by aggregate roots
-/// and handled via MediatR INotification handlers in the Application layer.
+/// Marker interface for domain events. Extends <see cref="INotification"/>
+/// so that events raised by aggregate roots are automatically dispatched
+/// via MediatR after <see cref="IUnitOfWork.SaveChangesAsync"/> completes.
 /// </summary>
-/// <remarks>
-/// CA1040 (avoid empty interfaces) is suppressed intentionally.
-/// Marker interfaces are an established DDD pattern used here to provide
-/// strong typing and discoverability without requiring a shared base class.
-/// </remarks>
-#pragma warning disable CA1040 // Avoid empty interfaces
-public interface IDomainEvent;
+#pragma warning disable CA1040 // Avoid empty interfaces — intentional DDD marker extending MediatR
+public interface IDomainEvent : INotification;
 #pragma warning restore CA1040

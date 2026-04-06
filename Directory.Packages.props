@@ -15,6 +15,7 @@
   <ItemGroup Label="CQRS + Validation">
     <!-- MediatR 12+ includes DI integration, no separate extension package needed -->
     <PackageVersion Include="MediatR" Version="12.5.0" />
+    <PackageVersion Include="MediatR.Contracts" Version="2.0.1" />
     <PackageVersion Include="FluentValidation" Version="11.11.0" />
     <PackageVersion Include="FluentValidation.DependencyInjectionExtensions" Version="11.11.0" />
   </ItemGroup>

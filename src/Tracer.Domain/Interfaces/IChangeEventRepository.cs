@@ -9,6 +9,11 @@ namespace Tracer.Domain.Interfaces;
 public interface IChangeEventRepository
 {
     /// <summary>
+    /// Gets a change event by its ID. Returns <see langword="null"/> if not found.
+    /// </summary>
+    Task<ChangeEvent?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Persists a new change event.
     /// </summary>
     /// <param name="changeEvent">The change event to add.</param>

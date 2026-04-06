@@ -54,7 +54,8 @@ public sealed class CkbPersistenceServiceTests
             CancellationToken.None);
 
         await _profileRepo.Received(1).UpsertAsync(profile, Arg.Any<CancellationToken>());
-        await _unitOfWork.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
+        // SaveChangesAsync called twice: once for persistence + domain events, once for MarkNotified
+        await _unitOfWork.Received(2).SaveChangesAsync(Arg.Any<CancellationToken>());
     }
 
     [Fact]
