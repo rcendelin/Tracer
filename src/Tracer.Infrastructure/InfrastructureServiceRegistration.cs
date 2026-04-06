@@ -120,7 +120,7 @@ public static class InfrastructureServiceRegistration
         services.AddTransient<IEnrichmentProvider, GoogleMapsProvider>();
         services.AddTransient<IEnrichmentProvider, AzureMapsProvider>();
 
-        // Service Bus (optional — registered lazily, activated only if connection string is configured)
+        // Service Bus (optional — activated only if connection string is configured)
         services.AddSingleton<IServiceBusPublisher>(sp =>
         {
             var sbConfig = sp.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>();
@@ -128,13 +128,16 @@ public static class InfrastructureServiceRegistration
             if (string.IsNullOrWhiteSpace(sbConnectionString))
                 return new NullServiceBusPublisher();
 
-            var client = new ServiceBusClient(sbConnectionString);
+            var client = sp.GetRequiredService<ServiceBusClient>();
             var sbOptions = new ServiceBusOptions();
             sbConfig.GetSection(ServiceBusOptions.SectionName).Bind(sbOptions);
             var optionsWrapper = Microsoft.Extensions.Options.Options.Create(sbOptions);
             var logger = sp.GetRequiredService<ILogger<ServiceBusPublisher>>();
             return new ServiceBusPublisher(client, optionsWrapper, logger);
         });
+
+        // Note: ServiceBusConsumer (BackgroundService) is registered in Program.cs
+        // only when ConnectionStrings:ServiceBus is configured, to avoid startup failures.
 
         return services;
     }
