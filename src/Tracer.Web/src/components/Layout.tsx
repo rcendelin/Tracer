@@ -1,4 +1,6 @@
 import { NavLink, Outlet } from 'react-router';
+import { useSignalR } from '../hooks/useSignalR';
+import { ConnectionStatusBadge } from './ConnectionStatusBadge';
 
 const navItems = [
   { to: '/', label: 'Dashboard', icon: '📊' },
@@ -8,6 +10,10 @@ const navItems = [
 ];
 
 export function Layout() {
+  // Initialise the shared SignalR connection at layout level so it stays
+  // alive for the entire session and is available to all child pages.
+  const { connectionState } = useSignalR();
+
   return (
     <div className="flex h-screen bg-gray-50">
       {/* Sidebar */}
@@ -35,8 +41,9 @@ export function Layout() {
             </NavLink>
           ))}
         </nav>
-        <div className="p-4 border-t border-gray-700 text-xs text-gray-500">
-          Phase 1 MVP
+        <div className="p-4 border-t border-gray-700 flex items-center justify-between">
+          <span className="text-xs text-gray-500">Phase 2</span>
+          <ConnectionStatusBadge state={connectionState} />
         </div>
       </aside>
 

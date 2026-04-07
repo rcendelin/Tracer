@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
+import { useQueryClient } from '@tanstack/react-query';
 import { useTraces } from '../hooks/useTraces';
+import { useSignalR } from '../hooks/useSignalR';
 import { StatusBadge } from '../components/StatusBadge';
 import { ConfidenceBar } from '../components/ConfidenceBar';
 import { Pagination } from '../components/Pagination';
@@ -14,13 +16,18 @@ const STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: 'PartiallyCompleted', label: 'Partial' },
   { value: 'Failed', label: 'Failed' },
   { value: 'Cancelled', label: 'Cancelled' },
+  { value: 'Queued', label: 'Queued' },
 ];
 
 export function TracesPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+
+  // Per-row live status overrides pushed from SignalR. Key = traceId.
+  const [liveStatuses, setLiveStatuses] = useState<Record<string, TraceStatus>>({});
 
   const { data, isLoading, isError, error } = useTraces({
     page,
@@ -28,6 +35,35 @@ export function TracesPage() {
     status: (statusFilter || undefined) as TraceStatus | undefined,
     search: search || undefined,
   });
+
+  const { onTraceCompleted } = useSignalR();
+
+  // When a trace completes, update its row live and then refresh the list
+  // so pagination counts / ordering stay accurate.
+  useEffect(() => {
+    const timers: ReturnType<typeof setTimeout>[] = [];
+
+    const unsub = onTraceCompleted((event) => {
+      setLiveStatuses((prev) => ({ ...prev, [event.traceId]: event.status }));
+      // Invalidate after a short delay so the badge shows the live status first.
+      timers.push(
+        setTimeout(() => {
+          void queryClient.invalidateQueries({ queryKey: ['traces'] });
+        }, 1_500),
+      );
+    });
+
+    return () => {
+      unsub();
+      timers.forEach(clearTimeout);
+    };
+  }, [onTraceCompleted, queryClient]);
+
+  // Clear live status overrides when filters or page change so stale entries
+  // from a previous page/filter combination don't bleed into the new view.
+  useEffect(() => {
+    setLiveStatuses({});
+  }, [page, search, statusFilter]);
 
   const formatDate = (dateStr: string) => {
     const d = new Date(dateStr);
@@ -100,23 +136,34 @@ export function TracesPage() {
                     </td>
                   </tr>
                 )}
-                {data.items.map((trace) => (
-                  <tr
-                    key={trace.traceId}
-                    onClick={() => navigate(`/traces/${trace.traceId}`)}
-                    className="hover:bg-gray-50 cursor-pointer transition-colors"
-                  >
-                    <td className="px-4 py-3 text-gray-600">{formatDate(trace.createdAt)}</td>
-                    <td className="px-4 py-3 font-medium text-gray-900">
-                      {trace.company?.legalName?.value ?? '-'}
-                    </td>
-                    <td className="px-4 py-3"><StatusBadge status={trace.status} /></td>
-                    <td className="px-4 py-3"><ConfidenceBar value={trace.overallConfidence} /></td>
-                    <td className="px-4 py-3 text-right text-gray-600">
-                      {trace.durationMs ? `${trace.durationMs}ms` : '-'}
-                    </td>
-                  </tr>
-                ))}
+                {data.items.map((trace) => {
+                  const displayStatus = liveStatuses[trace.traceId] ?? trace.status;
+                  const isLive = trace.traceId in liveStatuses && liveStatuses[trace.traceId] !== trace.status;
+                  return (
+                    <tr
+                      key={trace.traceId}
+                      onClick={() => navigate(`/traces/${trace.traceId}`)}
+                      className="hover:bg-gray-50 cursor-pointer transition-colors"
+                    >
+                      <td className="px-4 py-3 text-gray-600">{formatDate(trace.createdAt)}</td>
+                      <td className="px-4 py-3 font-medium text-gray-900">
+                        {trace.company?.legalName?.value ?? '-'}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1.5">
+                          <StatusBadge status={displayStatus} />
+                          {isLive && (
+                            <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" title="Updated live" />
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3"><ConfidenceBar value={trace.overallConfidence} /></td>
+                      <td className="px-4 py-3 text-right text-gray-600">
+                        {trace.durationMs ? `${trace.durationMs}ms` : '-'}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

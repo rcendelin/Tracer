@@ -7,8 +7,19 @@ namespace Tracer.Api.Hubs;
 
 /// <summary>
 /// SignalR-backed implementation of <see cref="ITraceNotificationService"/>.
-/// Broadcasts to all connected clients.
 /// </summary>
+/// <remarks>
+/// <para>
+/// Trace-specific events (<c>SourceCompleted</c>, <c>TraceCompleted</c>) are sent only to
+/// clients that joined the per-trace group via <c>TraceHub.SubscribeToTrace(traceId)</c>.
+/// This prevents cross-client leakage of enrichment data in multi-consumer deployments.
+/// </para>
+/// <para>
+/// Profile change events (<c>ChangeDetected</c>) are broadcast to all authenticated clients
+/// because change monitoring is a shared concern — all consumers are expected to be
+/// authorized and interested in profile changes.
+/// </para>
+/// </remarks>
 internal sealed class TraceNotificationService : ITraceNotificationService
 {
     private readonly IHubContext<TraceHub> _hubContext;
@@ -22,32 +33,49 @@ internal sealed class TraceNotificationService : ITraceNotificationService
         Guid traceId, string providerId, SourceStatus status,
         int fieldsEnriched, long durationMs, CancellationToken cancellationToken)
     {
-        await _hubContext.Clients.All.SendAsync("SourceCompleted", new
-        {
-            traceId,
-            providerId,
-            status = status.ToString(),
-            fieldsEnriched,
-            durationMs,
-        }, cancellationToken).ConfigureAwait(false);
+        // Send only to clients subscribed to this specific trace.
+        await _hubContext.Clients
+            .Group(traceId.ToString())
+            .SendAsync("SourceCompleted", new
+            {
+                traceId,
+                // Nested as { source } to match the SourceCompletedEvent frontend type.
+                source = new
+                {
+                    providerId,
+                    status = status.ToString(),
+                    fieldsEnriched,
+                    durationMs,
+                    errorMessage = (string?)null,
+                },
+            }, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public async Task NotifyTraceCompletedAsync(
         Guid traceId, TraceStatus status, double? overallConfidence,
         CancellationToken cancellationToken)
     {
-        await _hubContext.Clients.All.SendAsync("TraceCompleted", new
-        {
-            traceId,
-            status = status.ToString(),
-            overallConfidence,
-        }, cancellationToken).ConfigureAwait(false);
+        // Send only to clients subscribed to this specific trace.
+        await _hubContext.Clients
+            .Group(traceId.ToString())
+            .SendAsync("TraceCompleted", new
+            {
+                traceId,
+                status = status.ToString(),
+                overallConfidence,
+            }, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public async Task NotifyChangeDetectedAsync(
         ChangeEventDto changeEvent, CancellationToken cancellationToken)
     {
-        await _hubContext.Clients.All.SendAsync("ChangeDetected",
-            changeEvent, cancellationToken).ConfigureAwait(false);
+        // Broadcast change events to all authenticated clients — change monitoring
+        // is a shared concern across all API consumers.
+        await _hubContext.Clients
+            .All
+            .SendAsync("ChangeDetected", changeEvent, cancellationToken)
+            .ConfigureAwait(false);
     }
 }

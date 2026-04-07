@@ -1,10 +1,14 @@
+import { useEffect } from 'react';
 import { Link } from 'react-router';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { statsApi, traceApi } from '../api/client';
+import { useSignalR } from '../hooks/useSignalR';
 import { StatusBadge } from '../components/StatusBadge';
 import { ConfidenceBar } from '../components/ConfidenceBar';
 
 export function DashboardPage() {
+  const queryClient = useQueryClient();
+
   const { data: stats } = useQuery({
     queryKey: ['dashboard-stats'],
     queryFn: () => statsApi.dashboard(),
@@ -16,6 +20,17 @@ export function DashboardPage() {
     queryFn: () => traceApi.list({ page: 0, pageSize: 10 }),
     refetchInterval: 10_000,
   });
+
+  const { onTraceCompleted } = useSignalR();
+
+  // When any trace completes, refresh the recent-traces list and stats
+  // so the dashboard live-feeds completed enrichments without page reload.
+  useEffect(() => {
+    return onTraceCompleted(() => {
+      void queryClient.invalidateQueries({ queryKey: ['traces'] });
+      void queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+    });
+  }, [onTraceCompleted, queryClient]);
 
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleString('cs-CZ', { dateStyle: 'short', timeStyle: 'short' });
@@ -83,11 +98,17 @@ export function DashboardPage() {
         </Link>
       </div>
 
-      {/* Recent traces */}
+      {/* Recent traces — live feed updated via SignalR */}
       <div className="bg-white rounded-lg shadow overflow-hidden">
         <div className="px-4 py-3 bg-gray-50 border-b flex items-center justify-between">
           <h3 className="text-lg font-semibold text-gray-900">Recent Traces</h3>
-          <Link to="/traces" className="text-sm text-blue-600 hover:text-blue-800">View all</Link>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-gray-500 flex items-center gap-1">
+              <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
+              Live feed
+            </span>
+            <Link to="/traces" className="text-sm text-blue-600 hover:text-blue-800">View all</Link>
+          </div>
         </div>
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b">

@@ -122,6 +122,31 @@ export interface DashboardStats {
   averageConfidence: number;
 }
 
-export type TraceStatus = 'Pending' | 'InProgress' | 'Completed' | 'PartiallyCompleted' | 'Failed' | 'Cancelled';
+export type TraceStatus = 'Pending' | 'InProgress' | 'Completed' | 'PartiallyCompleted' | 'Failed' | 'Cancelled' | 'Queued';
 export type TraceDepth = 'Quick' | 'Standard' | 'Deep';
 export type SourceStatus = 'Unknown' | 'Success' | 'NotFound' | 'Error' | 'Timeout' | 'Skipped';
+
+// SignalR push event payloads (mirror of backend SignalR hub messages)
+export interface SourceCompletedEvent {
+  traceId: string;
+  source: SourceResult;
+}
+
+export interface TraceCompletedEvent {
+  traceId: string;
+  status: TraceStatus;
+  overallConfidence?: number;
+  durationMs?: number;
+}
+
+export interface ChangeDetectedEvent {
+  companyProfileId: string;
+  normalizedKey: string;
+  field: string;
+  severity: string;
+}
+
+export interface ValidationProgressEvent {
+  profileId: string;
+  message: string;
+}

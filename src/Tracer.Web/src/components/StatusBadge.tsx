@@ -7,6 +7,7 @@ const statusConfig: Record<TraceStatus, { label: string; className: string }> = 
   PartiallyCompleted: { label: 'Partial', className: 'bg-orange-100 text-orange-800' },
   Failed: { label: 'Failed', className: 'bg-red-100 text-red-800' },
   Cancelled: { label: 'Cancelled', className: 'bg-gray-100 text-gray-800' },
+  Queued: { label: 'Queued', className: 'bg-purple-100 text-purple-800' },
 };
 
 export function StatusBadge({ status }: { status: TraceStatus }) {
