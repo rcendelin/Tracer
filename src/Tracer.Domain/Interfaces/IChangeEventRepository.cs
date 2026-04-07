@@ -48,4 +48,26 @@ public interface IChangeEventRepository
 
     /// <summary>Counts change events matching the minimum severity filter.</summary>
     Task<int> CountBySeverityAsync(ChangeSeverity minSeverity, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lists change events with optional exact severity and profile filters, ordered by detection date descending.
+    /// </summary>
+    /// <param name="page">Zero-based page index.</param>
+    /// <param name="pageSize">Number of items per page.</param>
+    /// <param name="severity">Optional exact severity filter. <see langword="null"/> returns all severities.</param>
+    /// <param name="profileId">Optional profile ID filter.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<IReadOnlyCollection<ChangeEvent>> ListAsync(
+        int page, int pageSize,
+        ChangeSeverity? severity = null,
+        Guid? profileId = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Counts change events with optional exact severity and profile filters.
+    /// </summary>
+    Task<int> CountAsync(
+        ChangeSeverity? severity = null,
+        Guid? profileId = null,
+        CancellationToken cancellationToken = default);
 }

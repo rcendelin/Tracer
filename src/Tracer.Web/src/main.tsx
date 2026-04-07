@@ -9,6 +9,7 @@ import { TraceDetailPage } from './pages/TraceDetailPage';
 import { NewTracePage } from './pages/NewTracePage';
 import { ProfilesPage } from './pages/ProfilesPage';
 import { ProfileDetailPage } from './pages/ProfileDetailPage';
+import { ChangeFeedPage } from './pages/ChangeFeedPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import './index.css';
 
@@ -33,6 +34,7 @@ createRoot(document.getElementById('root')!).render(
             <Route path="trace/new" element={<NewTracePage />} />
             <Route path="profiles" element={<ProfilesPage />} />
             <Route path="profiles/:profileId" element={<ProfileDetailPage />} />
+            <Route path="changes" element={<ChangeFeedPage />} />
             <Route path="*" element={<NotFoundPage />} />
           </Route>
         </Routes>

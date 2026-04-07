@@ -6,6 +6,9 @@ import type {
   ProfileHistory,
   DashboardStats,
   PagedResult,
+  ChangeEvent,
+  ChangeStats,
+  ChangeSeverity,
 } from '../types';
 
 const BASE_URL = '/api';
@@ -99,6 +102,25 @@ export const profileApi = {
 
   revalidate: (profileId: string) =>
     fetchApi<string>(`/profiles/${profileId}/revalidate`, { method: 'POST' }),
+};
+
+// Changes endpoints
+export const changesApi = {
+  list: (params: {
+    page?: number;
+    pageSize?: number;
+    severity?: ChangeSeverity;
+    profileId?: string;
+  } = {}) => {
+    const query = new URLSearchParams();
+    if (params.page !== undefined) query.set('page', String(params.page));
+    if (params.pageSize !== undefined) query.set('pageSize', String(params.pageSize));
+    if (params.severity) query.set('severity', params.severity);
+    if (params.profileId) query.set('profileId', params.profileId);
+    return fetchApi<PagedResult<ChangeEvent>>(`/changes?${query}`);
+  },
+
+  stats: () => fetchApi<ChangeStats>('/changes/stats'),
 };
 
 // Stats endpoints

@@ -72,4 +72,38 @@ internal sealed class ChangeEventRepository : IChangeEventRepository
             .CountAsync(cancellationToken)
             .ConfigureAwait(false);
     }
+
+    public async Task<IReadOnlyCollection<ChangeEvent>> ListAsync(
+        int page, int pageSize,
+        ChangeSeverity? severity, Guid? profileId,
+        CancellationToken cancellationToken)
+    {
+        return await ApplyFilters(_db.ChangeEvents.AsNoTracking(), severity, profileId)
+            .OrderByDescending(e => e.DetectedAt)
+            .Skip(page * pageSize)
+            .Take(pageSize)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async Task<int> CountAsync(
+        ChangeSeverity? severity, Guid? profileId,
+        CancellationToken cancellationToken)
+    {
+        return await ApplyFilters(_db.ChangeEvents.AsNoTracking(), severity, profileId)
+            .CountAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private static IQueryable<ChangeEvent> ApplyFilters(
+        IQueryable<ChangeEvent> query,
+        ChangeSeverity? severity,
+        Guid? profileId)
+    {
+        if (severity.HasValue)
+            query = query.Where(e => e.Severity == severity.Value);
+        if (profileId.HasValue)
+            query = query.Where(e => e.CompanyProfileId == profileId.Value);
+        return query;
+    }
 }

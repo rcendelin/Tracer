@@ -122,6 +122,7 @@ app.UseRateLimiter();
 app.MapHealthChecks("/health");
 app.MapTraceEndpoints();
 app.MapProfileEndpoints();
+app.MapChangesEndpoints();
 app.MapStatsEndpoints();
 app.MapHub<Tracer.Api.Hubs.TraceHub>("/hubs/trace");
 

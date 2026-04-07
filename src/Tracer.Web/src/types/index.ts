@@ -138,6 +138,14 @@ export interface DashboardStats {
   averageConfidence: number;
 }
 
+export interface ChangeStats {
+  totalCount: number;
+  criticalCount: number;
+  majorCount: number;
+  minorCount: number;
+  cosmeticCount: number;
+}
+
 export type TraceStatus = 'Pending' | 'InProgress' | 'Completed' | 'PartiallyCompleted' | 'Failed' | 'Cancelled' | 'Queued';
 export type TraceDepth = 'Quick' | 'Standard' | 'Deep';
 export type SourceStatus = 'Unknown' | 'Success' | 'NotFound' | 'Error' | 'Timeout' | 'Skipped';

@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from 'react-router';
 import { useSignalR } from '../hooks/useSignalR';
+import { useChangeFeedLiveUpdates } from '../hooks/useChanges';
 import { ConnectionStatusBadge } from './ConnectionStatusBadge';
 
 const navItems = [
@@ -7,12 +8,19 @@ const navItems = [
   { to: '/traces', label: 'Traces', icon: '🔍' },
   { to: '/trace/new', label: 'New Trace', icon: '➕' },
   { to: '/profiles', label: 'Profiles', icon: '🏢' },
+  { to: '/changes', label: 'Change Feed', icon: '🔔' },
 ];
 
 export function Layout() {
   // Initialise the shared SignalR connection at layout level so it stays
   // alive for the entire session and is available to all child pages.
-  const { connectionState } = useSignalR();
+  const { connectionState, onChangeDetected } = useSignalR();
+
+  // Invalidate change-feed query cache when a change arrives via SignalR.
+  // Calling useChangeFeedLiveUpdates here (rather than in ChangeFeedPage)
+  // avoids creating a second useSignalR() consumer and the lifecycle-handler
+  // conflicts that would cause.
+  useChangeFeedLiveUpdates(onChangeDetected);
 
   return (
     <div className="flex h-screen bg-gray-50">
