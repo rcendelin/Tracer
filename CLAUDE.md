@@ -257,6 +257,9 @@ Two modes: Lightweight (re-check only expired fields against primary registry) a
 - **Middleware order constraint** — `app.UseApiKeyAuth()` must come before `app.UseRateLimiter()`. If reversed, unauthenticated requests consume rate limit slots before being rejected.
 - **ForwardedHeaders required for rate limiting** — behind Azure App Service / Front Door, `RemoteIpAddress` is the proxy IP without `app.UseForwardedHeaders()`. Configure `KnownIPNetworks` with RFC 1918 ranges; use `System.Net.IPNetwork.Parse("10.0.0.0/8")` (.NET 10 API — the old `Microsoft.AspNetCore.HttpOverrides.IPNetwork` is deprecated).
 - **`TraceStatus.Queued = 6`** — added for batch submissions waiting in Service Bus queue. `MarkQueued()` transitions from `Pending`. `MarkInProgress()` accepts both `Pending` and `Queued` (Service Bus consumer picks up Queued items).
+- **SignalR API key auth** — WebSocket upgrade cannot send custom headers. `ApiKeyAuthMiddleware.ExtractApiKey()` checks three sources in order: (1) `X-Api-Key` header, (2) `Authorization: Bearer <key>`, (3) `access_token` query string. The frontend `useSignalR.ts` uses `accessTokenFactory` to inject the key as Bearer, which SignalR converts to the `access_token` query param during WebSocket negotiation.
+- **SignalR hub groups** — `SourceCompleted` and `TraceCompleted` are sent to `Clients.Group(traceId)`, not `Clients.All`. Clients must call hub method `SubscribeToTrace(traceId)` to join the group before receiving trace-specific events. `ChangeDetected` is sent to `Clients.All` (global monitoring concern). When adding new hub events, decide group vs. all explicitly.
+- **Frontend SignalR singleton** — `src/Tracer.Web/src/hooks/useSignalR.ts` uses a module-level singleton `HubConnection` + `consumerCount` reference counter so all React components share one WebSocket. Do NOT duplicate this hook or create a second `HubConnectionBuilder` instance — it will silently open a second connection.
 
 ## Git conventions
 
