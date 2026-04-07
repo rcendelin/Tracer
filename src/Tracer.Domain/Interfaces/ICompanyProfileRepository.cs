@@ -49,6 +49,7 @@ public interface ICompanyProfileRepository
     /// </summary>
     /// <param name="page">Zero-based page index.</param>
     /// <param name="pageSize">Number of items per page.</param>
+    /// <param name="search">Optional free-text search against registration ID and legal name.</param>
     /// <param name="country">Optional country code filter.</param>
     /// <param name="minConfidence">Optional minimum overall confidence filter.</param>
     /// <param name="maxConfidence">Optional maximum overall confidence filter.</param>
@@ -57,6 +58,7 @@ public interface ICompanyProfileRepository
     /// <param name="cancellationToken">Cancellation token.</param>
     Task<IReadOnlyCollection<CompanyProfile>> ListAsync(
         int page, int pageSize,
+        string? search = null,
         string? country = null,
         double? minConfidence = null,
         double? maxConfidence = null,
@@ -68,6 +70,7 @@ public interface ICompanyProfileRepository
     /// Counts company profiles matching the specified filters.
     /// </summary>
     Task<int> CountAsync(
+        string? search = null,
         string? country = null,
         double? minConfidence = null,
         double? maxConfidence = null,

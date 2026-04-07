@@ -10,6 +10,7 @@ public sealed record ListProfilesQuery : IRequest<PagedResult<CompanyProfileDto>
 {
     public int Page { get; init; }
     public int PageSize { get; init; } = 20;
+    public string? Search { get; init; }
     public string? Country { get; init; }
     public double? MinConfidence { get; init; }
     public double? MaxConfidence { get; init; }

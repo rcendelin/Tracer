@@ -42,6 +42,7 @@ internal static class ProfileEndpoints
     private static async Task<Ok<PagedResult<CompanyProfileDto>>> ListProfilesAsync(
         [FromQuery] int page,
         [FromQuery] int pageSize,
+        [FromQuery] string? search,
         [FromQuery] string? country,
         [FromQuery] double? minConfidence,
         [FromQuery] double? maxConfidence,
@@ -54,6 +55,7 @@ internal static class ProfileEndpoints
         {
             Page = page,
             PageSize = pageSize > 0 ? Math.Min(pageSize, 100) : 20,
+            Search = search,
             Country = country,
             MinConfidence = minConfidence,
             MaxConfidence = maxConfidence,

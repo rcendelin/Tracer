@@ -26,12 +26,12 @@ public sealed class ListProfilesHandler : IRequestHandler<ListProfilesQuery, Pag
 
         var items = await _repository.ListAsync(
             page, pageSize,
-            request.Country, request.MinConfidence, request.MaxConfidence,
+            request.Search, request.Country, request.MinConfidence, request.MaxConfidence,
             request.ValidatedBefore, request.IncludeArchived,
             cancellationToken).ConfigureAwait(false);
 
         var totalCount = await _repository.CountAsync(
-            request.Country, request.MinConfidence, request.MaxConfidence,
+            request.Search, request.Country, request.MinConfidence, request.MaxConfidence,
             request.ValidatedBefore, request.IncludeArchived,
             cancellationToken).ConfigureAwait(false);
 

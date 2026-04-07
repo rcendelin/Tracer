@@ -70,14 +70,22 @@ export const profileApi = {
   list: (params: {
     page?: number;
     pageSize?: number;
+    search?: string;
     country?: string;
     minConfidence?: number;
+    maxConfidence?: number;
+    validatedBefore?: string;
+    includeArchived?: boolean;
   } = {}) => {
     const query = new URLSearchParams();
     if (params.page !== undefined) query.set('page', String(params.page));
     if (params.pageSize !== undefined) query.set('pageSize', String(params.pageSize));
+    if (params.search) query.set('search', params.search);
     if (params.country) query.set('country', params.country);
     if (params.minConfidence !== undefined) query.set('minConfidence', String(params.minConfidence));
+    if (params.maxConfidence !== undefined) query.set('maxConfidence', String(params.maxConfidence));
+    if (params.validatedBefore) query.set('validatedBefore', params.validatedBefore);
+    if (params.includeArchived) query.set('includeArchived', 'true');
     return fetchApi<PagedResult<CompanyProfile>>(`/profiles?${query}`);
   },
 

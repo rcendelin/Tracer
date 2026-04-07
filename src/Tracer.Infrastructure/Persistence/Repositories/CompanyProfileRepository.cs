@@ -64,13 +64,13 @@ internal sealed class CompanyProfileRepository : ICompanyProfileRepository
 
     public async Task<IReadOnlyCollection<CompanyProfile>> ListAsync(
         int page, int pageSize,
-        string? country, double? minConfidence, double? maxConfidence,
+        string? search, string? country, double? minConfidence, double? maxConfidence,
         DateTimeOffset? validatedBefore, bool includeArchived,
         CancellationToken cancellationToken)
     {
         var query = ApplyFilters(
             _db.CompanyProfiles.AsNoTracking(),
-            country, minConfidence, maxConfidence, validatedBefore, includeArchived);
+            search, country, minConfidence, maxConfidence, validatedBefore, includeArchived);
 
         return await query
             .OrderByDescending(p => p.TraceCount)
@@ -82,24 +82,34 @@ internal sealed class CompanyProfileRepository : ICompanyProfileRepository
     }
 
     public async Task<int> CountAsync(
-        string? country, double? minConfidence, double? maxConfidence,
+        string? search, string? country, double? minConfidence, double? maxConfidence,
         DateTimeOffset? validatedBefore, bool includeArchived,
         CancellationToken cancellationToken)
     {
         var query = ApplyFilters(
             _db.CompanyProfiles.AsNoTracking(),
-            country, minConfidence, maxConfidence, validatedBefore, includeArchived);
+            search, country, minConfidence, maxConfidence, validatedBefore, includeArchived);
 
         return await query.CountAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private static IQueryable<CompanyProfile> ApplyFilters(
         IQueryable<CompanyProfile> query,
-        string? country, double? minConfidence, double? maxConfidence,
+        string? search, string? country, double? minConfidence, double? maxConfidence,
         DateTimeOffset? validatedBefore, bool includeArchived)
     {
         if (!includeArchived)
             query = query.Where(p => !p.IsArchived);
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            // Search by registration ID and normalized key (both are regular columns — safe for SQL translation).
+            // LegalName is stored in a JSON column; querying it would require a computed column index
+            // which is outside the scope of this block. Name search can be added in a future block.
+            query = query.Where(p =>
+                (p.RegistrationId != null && p.RegistrationId.Contains(search)) ||
+                p.NormalizedKey.Contains(search));
+        }
 
         if (!string.IsNullOrWhiteSpace(country))
             query = query.Where(p => p.Country == country);
