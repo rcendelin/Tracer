@@ -67,6 +67,11 @@ public interface ICompanyProfileRepository
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Returns <see langword="true"/> if a company profile with the specified ID exists.
+    /// </summary>
+    Task<bool> ExistsAsync(Guid id, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Counts company profiles matching the specified filters.
     /// </summary>
     Task<int> CountAsync(

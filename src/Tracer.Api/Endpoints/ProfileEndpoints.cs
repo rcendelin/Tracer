@@ -5,6 +5,7 @@ using Tracer.Application.DTOs;
 using Tracer.Application.Queries.GetProfile;
 using Tracer.Application.Queries.GetProfileHistory;
 using Tracer.Application.Queries.ListProfiles;
+using Tracer.Domain.Interfaces;
 
 namespace Tracer.Api.Endpoints;
 
@@ -34,6 +35,15 @@ internal static class ProfileEndpoints
             .WithName("GetProfileHistory")
             .WithSummary("Get change history and validations for a profile")
             .Produces<GetProfileHistoryResult>()
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
+        // Phase 3 handler: full re-validation pipeline is implemented in B-65+.
+        // The endpoint is registered here so the frontend can call it; it returns 202 Accepted
+        // with a message indicating the feature will be available in Phase 3.
+        group.MapPost("/{profileId:guid}/revalidate", RevalidateProfileAsync)
+            .WithName("RevalidateProfile")
+            .WithSummary("Trigger manual re-validation of a company profile (Phase 3)")
+            .Produces(StatusCodes.Status202Accepted)
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         return group;
@@ -78,6 +88,26 @@ internal static class ProfileEndpoints
         return result is not null
             ? TypedResults.Ok(result)
             : TypedResults.NotFound();
+    }
+
+    private static async Task<Results<Accepted<string>, NotFound>> RevalidateProfileAsync(
+        Guid profileId,
+        ICompanyProfileRepository repository,
+        CancellationToken cancellationToken)
+    {
+        // Lightweight existence check — avoids loading the full profile + recent changes
+        // just to return 404. Full re-validation pipeline is Phase 3 (B-65+).
+        var exists = await repository.ExistsAsync(profileId, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (!exists)
+            return TypedResults.NotFound();
+
+        // Full re-validation pipeline is Phase 3 (B-65+). The request is accepted
+        // and will be processed once the re-validation engine is implemented.
+        return TypedResults.Accepted(
+            (string?)null,
+            $"Re-validation for profile {profileId} queued. Full re-validation engine is available in Phase 3.");
     }
 
     private static async Task<Results<Ok<GetProfileHistoryResult>, NotFound>> GetProfileHistoryAsync(

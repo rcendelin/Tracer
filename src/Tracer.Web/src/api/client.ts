@@ -3,8 +3,8 @@ import type {
   TraceResult,
   CompanyProfile,
   ProfileDetail,
+  ProfileHistory,
   DashboardStats,
-  ChangeEvent,
   PagedResult,
 } from '../types';
 
@@ -93,9 +93,12 @@ export const profileApi = {
     fetchApi<ProfileDetail>(`/profiles/${profileId}`),
 
   history: (profileId: string, page = 0, pageSize = 20) =>
-    fetchApi<{ changes: PagedResult<ChangeEvent>; validations: unknown[] }>(
+    fetchApi<ProfileHistory>(
       `/profiles/${profileId}/history?page=${page}&pageSize=${pageSize}`,
     ),
+
+  revalidate: (profileId: string) =>
+    fetchApi<string>(`/profiles/${profileId}/revalidate`, { method: 'POST' }),
 };
 
 // Stats endpoints

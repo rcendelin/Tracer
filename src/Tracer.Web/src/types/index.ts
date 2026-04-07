@@ -90,14 +90,30 @@ export interface SourceResult {
 export interface ChangeEvent {
   id: string;
   companyProfileId: string;
-  field: string;
-  changeType: string;
-  severity: string;
+  field: FieldName;
+  changeType: ChangeType;
+  severity: ChangeSeverity;
   previousValueJson?: string;
   newValueJson?: string;
   detectedBy: string;
   detectedAt: string;
   isNotified: boolean;
+}
+
+export interface ValidationRecord {
+  id: string;
+  companyProfileId: string;
+  validationType: ValidationType;
+  fieldsChecked: number;
+  fieldsChanged: number;
+  providerId: string;
+  durationMs: number;
+  validatedAt: string;
+}
+
+export interface ProfileHistory {
+  changes: PagedResult<ChangeEvent>;
+  validations: ValidationRecord[];
 }
 
 export interface PagedResult<T> {
@@ -125,6 +141,13 @@ export interface DashboardStats {
 export type TraceStatus = 'Pending' | 'InProgress' | 'Completed' | 'PartiallyCompleted' | 'Failed' | 'Cancelled' | 'Queued';
 export type TraceDepth = 'Quick' | 'Standard' | 'Deep';
 export type SourceStatus = 'Unknown' | 'Success' | 'NotFound' | 'Error' | 'Timeout' | 'Skipped';
+export type ChangeSeverity = 'Critical' | 'Major' | 'Minor' | 'Cosmetic';
+export type ChangeType = 'Created' | 'Updated' | 'Deleted';
+export type ValidationType = 'Lightweight' | 'Deep';
+export type FieldName =
+  | 'LegalName' | 'TradeName' | 'RegistrationId' | 'TaxId' | 'LegalForm'
+  | 'RegisteredAddress' | 'OperatingAddress' | 'Phone' | 'Email' | 'Website'
+  | 'Industry' | 'EmployeeRange' | 'EntityStatus' | 'ParentCompany' | 'Location' | 'Officers';
 
 // SignalR push event payloads (mirror of backend SignalR hub messages)
 export interface SourceCompletedEvent {

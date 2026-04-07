@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.HttpOverrides;
 using Serilog;
@@ -16,6 +17,13 @@ builder.Host.UseSerilog((ctx, lc) => lc
 
 // OpenAPI
 builder.Services.AddOpenApi();
+
+// Global JSON options: serialize enums as strings so the frontend receives
+// "LegalName" instead of 0, "Critical" instead of 1, etc.
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
+});
 
 // SignalR
 builder.Services.AddSignalR();

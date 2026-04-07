@@ -55,6 +55,13 @@ internal sealed class CompanyProfileRepository : ICompanyProfileRepository
             .ConfigureAwait(false);
     }
 
+    public async Task<bool> ExistsAsync(Guid id, CancellationToken cancellationToken)
+    {
+        return await _db.CompanyProfiles
+            .AnyAsync(p => p.Id == id, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     public async Task<CompanyProfile?> GetByIdAsync(Guid id, CancellationToken cancellationToken)
     {
         return await _db.CompanyProfiles
