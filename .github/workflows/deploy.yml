@@ -22,6 +22,7 @@ env:
   DOTNET_VERSION: '10.0.x'
   NODE_VERSION: '22'
   AZURE_RESOURCE_GROUP: 'rg-tracer-${{ inputs.environment || ''test'' }}'
+  ENVIRONMENT: ${{ inputs.environment || 'test' }}
 
 jobs:
   build-api:
@@ -71,9 +72,111 @@ jobs:
           name: web-artifact
           path: src/Tracer.Web/dist
 
+  deploy-infrastructure:
+    name: Deploy Infrastructure (Bicep)
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment || 'test' }}
+    outputs:
+      api-url: ${{ steps.bicep-deploy.outputs.apiUrl }}
+      key-vault-uri: ${{ steps.bicep-deploy.outputs.keyVaultUri }}
+      app-service-name: ${{ steps.bicep-deploy.outputs.appServiceName }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy Bicep infrastructure
+        id: bicep-deploy
+        env:
+          # Expose secret as env var — az CLI reads from env to avoid CLI argument exposure in ps aux
+          BICEP_SQL_PASSWORD: ${{ secrets.SQL_ADMIN_PASSWORD }}
+        run: |
+          # Write parameter overrides to a temp file using jq (safe for special chars in passwords)
+          jq -n \
+            --arg pw "$BICEP_SQL_PASSWORD" \
+            --arg env "${{ env.ENVIRONMENT }}" \
+            '{"sqlAdminPassword":{"value":$pw},"environment":{"value":$env}}' \
+            > /tmp/secure-params.json
+
+          output=$(az deployment group create \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --template-file deploy/bicep/main.bicep \
+            --parameters deploy/bicep/main.bicepparam \
+            --parameters @/tmp/secure-params.json \
+            --query 'properties.outputs' \
+            --output json)
+
+          rm -f /tmp/secure-params.json
+
+          echo "apiUrl=$(echo "$output" | jq -r '.apiUrl.value')" >> "$GITHUB_OUTPUT"
+          echo "keyVaultUri=$(echo "$output" | jq -r '.keyVaultUri.value')" >> "$GITHUB_OUTPUT"
+          echo "appServiceName=tracer-${{ env.ENVIRONMENT }}-api" >> "$GITHUB_OUTPUT"
+
+      - name: Store secrets in Key Vault
+        run: |
+          KV_NAME="tracer-${{ env.ENVIRONMENT }}-kv"
+
+          # Database connection string (uses managed identity in prod; SQL auth for test)
+          az keyvault secret set \
+            --vault-name "$KV_NAME" \
+            --name "ConnectionStrings--TracerDb" \
+            --value "${{ secrets.TRACER_DB_CONNECTION_STRING }}" \
+            --output none
+
+          # Service Bus connection string
+          az keyvault secret set \
+            --vault-name "$KV_NAME" \
+            --name "ConnectionStrings--ServiceBus" \
+            --value "${{ secrets.SERVICE_BUS_CONNECTION_STRING }}" \
+            --output none
+
+          # Google Maps API key
+          az keyvault secret set \
+            --vault-name "$KV_NAME" \
+            --name "Providers--GoogleMaps--ApiKey" \
+            --value "${{ secrets.GOOGLE_MAPS_API_KEY }}" \
+            --output none
+
+          # Azure Maps subscription key
+          az keyvault secret set \
+            --vault-name "$KV_NAME" \
+            --name "Providers--AzureMaps--SubscriptionKey" \
+            --value "${{ secrets.AZURE_MAPS_SUBSCRIPTION_KEY }}" \
+            --output none
+
+          # Companies House API key (optional)
+          if [ -n "${{ secrets.COMPANIES_HOUSE_API_KEY }}" ]; then
+            az keyvault secret set \
+              --vault-name "$KV_NAME" \
+              --name "Providers--CompaniesHouse--ApiKey" \
+              --value "${{ secrets.COMPANIES_HOUSE_API_KEY }}" \
+              --output none
+          fi
+
+          # ABN Lookup GUID (optional)
+          if [ -n "${{ secrets.ABN_LOOKUP_GUID }}" ]; then
+            az keyvault secret set \
+              --vault-name "$KV_NAME" \
+              --name "Providers--AbnLookup--Guid" \
+              --value "${{ secrets.ABN_LOOKUP_GUID }}" \
+              --output none
+          fi
+
+          # API auth key for Tracer API
+          az keyvault secret set \
+            --vault-name "$KV_NAME" \
+            --name "Auth--ApiKeys--0" \
+            --value "${{ secrets.TRACER_API_KEY }}" \
+            --output none
+
   deploy-api:
     name: Deploy API to App Service
-    needs: build-api
+    needs: [build-api, deploy-infrastructure]
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment || 'test' }}
     steps:
@@ -93,12 +196,18 @@ jobs:
       - name: Deploy to App Service
         uses: azure/webapps-deploy@v3
         with:
-          app-name: 'tracer-${{ inputs.environment || ''test'' }}-api'
+          app-name: ${{ needs.deploy-infrastructure.outputs.app-service-name }}
           package: ./api
+
+      - name: Restart App Service (pick up Key Vault references)
+        run: |
+          az webapp restart \
+            --name ${{ needs.deploy-infrastructure.outputs.app-service-name }} \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }}
 
   deploy-web:
     name: Deploy Web to Static Web App
-    needs: build-web
+    needs: [build-web, deploy-infrastructure]
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment || 'test' }}
     steps:
@@ -117,3 +226,19 @@ jobs:
           action: 'upload'
           app_location: './web'
           skip_app_build: true
+
+  smoke-test:
+    name: Smoke Test — Phase 2
+    needs: [deploy-api, deploy-web]
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment || 'test' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run smoke tests
+        env:
+          API_URL: ${{ needs.deploy-infrastructure.outputs.api-url }}
+          API_KEY: ${{ secrets.TRACER_API_KEY }}
+        run: |
+          chmod +x deploy/scripts/smoke-test-phase2.sh
+          ./deploy/scripts/smoke-test-phase2.sh "$API_URL" "$API_KEY"

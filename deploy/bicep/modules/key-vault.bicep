@@ -1,7 +1,6 @@
 @description('Azure Key Vault for secrets')
 param location string = resourceGroup().location
 param namePrefix string
-param appServicePrincipalId string = ''
 param tags object = {}
 
 var vaultName = '${namePrefix}-kv'
@@ -24,3 +23,4 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
 
 output vaultName string = keyVault.name
 output vaultUri string = keyVault.properties.vaultUri
+output vaultId string = keyVault.id

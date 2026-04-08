@@ -43,7 +43,7 @@ module sqlServer 'modules/sql-server.bicep' = {
   }
 }
 
-// Key Vault
+// Key Vault — creates vault first (no RBAC dependency on App Service yet)
 module keyVault 'modules/key-vault.bicep' = {
   name: 'keyVault'
   params: {
@@ -53,14 +53,28 @@ module keyVault 'modules/key-vault.bicep' = {
   }
 }
 
-// App Service (API)
+// App Service (API) — uses Key Vault URI for @Microsoft.KeyVault() app settings references
 module appService 'modules/app-service.bicep' = {
   name: 'appService'
   params: {
     location: location
     namePrefix: namePrefix
     appInsightsInstrumentationKey: appInsights.outputs.connectionString
+    keyVaultUri: keyVault.outputs.vaultUri
     tags: tags
+  }
+}
+
+// Key Vault RBAC — Grant App Service managed identity Key Vault Secrets User role
+// Placed after both modules to avoid circular dependency
+var keyVaultSecretsUserRoleId = '4633458b-17de-408a-b874-0445c86b69e6'
+resource appServiceKeyVaultAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(keyVault.outputs.vaultId, appService.outputs.principalId, keyVaultSecretsUserRoleId)
+  scope: resourceGroup()
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', keyVaultSecretsUserRoleId)
+    principalId: appService.outputs.principalId
+    principalType: 'ServicePrincipal'
   }
 }
 
