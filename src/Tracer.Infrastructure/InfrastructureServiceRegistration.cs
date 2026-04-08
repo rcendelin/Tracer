@@ -241,6 +241,9 @@ public static class InfrastructureServiceRegistration
             options.Retry.MaxRetryAttempts = 1;
         });
 
+        // Provider registered after its HTTP client dependency (follows project convention)
+        services.AddTransient<IEnrichmentProvider, Providers.WebScraper.WebScraperProvider>();
+
         // Service Bus (optional — activated only if connection string is configured)
         services.AddSingleton<IServiceBusPublisher>(sp =>
         {

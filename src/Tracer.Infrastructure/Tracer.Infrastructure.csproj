@@ -17,6 +17,12 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Tracer.Infrastructure.Tests" />
+    <!--
+      Required for NSubstitute to proxy internal interfaces (IWebScraperClient, ISecEdgarClient, etc.)
+      in unit tests. Castle.DynamicProxy generates proxies in this synthetic assembly; without this
+      entry it cannot implement internal interfaces and throws InvalidProxyConstructorArgumentsException.
+    -->
+    <InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
   </ItemGroup>
 
   <ItemGroup>

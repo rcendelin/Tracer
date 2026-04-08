@@ -56,7 +56,14 @@ public sealed class SubmitTraceValidator : AbstractValidator<SubmitTraceCommand>
             RuleFor(x => x.Input.CompanyName).MaximumLength(500);
             RuleFor(x => x.Input.Phone).MaximumLength(50);
             RuleFor(x => x.Input.Email).MaximumLength(320);
-            RuleFor(x => x.Input.Website).MaximumLength(2000);
+            // Website must be a valid HTTP or HTTPS absolute URL when supplied.
+            // Defence-in-depth: WebScraperClient also validates, but rejecting at the API
+            // boundary prevents malformed values reaching the infrastructure layer at all.
+            RuleFor(x => x.Input.Website)
+                .MaximumLength(2000)
+                .Must(w => w is null || (Uri.TryCreate(w, UriKind.Absolute, out var u)
+                                         && (u.Scheme == Uri.UriSchemeHttp || u.Scheme == Uri.UriSchemeHttps)))
+                .WithMessage("Website must be a valid HTTP or HTTPS URL.");
             RuleFor(x => x.Input.Address).MaximumLength(500);
             RuleFor(x => x.Input.City).MaximumLength(200);
             RuleFor(x => x.Input.RegistrationId).MaximumLength(50);

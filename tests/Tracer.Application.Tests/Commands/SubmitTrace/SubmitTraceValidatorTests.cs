@@ -164,4 +164,53 @@ public sealed class SubmitTraceValidatorTests
         var result = _sut.TestValidate(command);
         result.ShouldHaveValidationErrorFor(x => x.Input.CompanyName);
     }
+
+    // ── Website URL validation ─────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData("https://www.example.com")]
+    [InlineData("http://example.com/path")]
+    [InlineData("https://sub.domain.cz/page?q=1")]
+    public void ValidWebsiteUrl_PassesValidation(string website)
+    {
+        var command = new SubmitTraceCommand
+        {
+            Input = new TraceRequestDto { Website = website },
+            Source = "rest-api",
+        };
+
+        var result = _sut.TestValidate(command);
+        result.ShouldNotHaveValidationErrorFor(x => x.Input.Website);
+    }
+
+    [Theory]
+    [InlineData("not-a-url")]
+    [InlineData("ftp://files.example.com/data")]
+    [InlineData("javascript:alert(1)")]
+    [InlineData("file:///etc/passwd")]
+    [InlineData("//missing-scheme.com")]
+    public void InvalidWebsiteUrl_FailsValidation(string website)
+    {
+        var command = new SubmitTraceCommand
+        {
+            Input = new TraceRequestDto { CompanyName = "Fallback Name", Website = website },
+            Source = "rest-api",
+        };
+
+        var result = _sut.TestValidate(command);
+        result.ShouldHaveValidationErrorFor(x => x.Input.Website);
+    }
+
+    [Fact]
+    public void NullWebsite_PassesValidation()
+    {
+        var command = new SubmitTraceCommand
+        {
+            Input = new TraceRequestDto { CompanyName = "Acme", Website = null },
+            Source = "rest-api",
+        };
+
+        var result = _sut.TestValidate(command);
+        result.ShouldNotHaveValidationErrorFor(x => x.Input.Website);
+    }
 }
