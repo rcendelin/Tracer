@@ -256,9 +256,10 @@ public static class InfrastructureServiceRegistration
             var endpoint = cfg["Providers:AzureOpenAI:Endpoint"];
             if (string.IsNullOrWhiteSpace(endpoint))
             {
-                // Optional provider — if not configured, return a no-op implementation
-                // so the DI container resolves without error. AiExtractorProvider.CanHandle
-                // will return false when the client is null.
+                // Optional provider — if not configured, return a no-op implementation.
+                // AiExtractorProvider.CanHandle still returns true for Deep traces with a website;
+                // NullAiExtractorClient short-circuits ExtractCompanyInfoAsync returning null,
+                // causing EnrichAsync to return NotFound without enriching anything.
                 return new NullAiExtractorClient();
             }
 
@@ -275,6 +276,10 @@ public static class InfrastructureServiceRegistration
             var logger = sp.GetRequiredService<ILogger<AiExtractorClient>>();
             return new AiExtractorClient(azureClient, deploymentName, maxTokens, logger);
         });
+
+        // AI Extractor provider — registered after its client dependency (follows project convention).
+        // Transient: thin stateless wrapper; IAiExtractorClient and IWebScraperClient are Singleton/Transient.
+        services.AddTransient<IEnrichmentProvider, Providers.AiExtractor.AiExtractorProvider>();
 
         // Service Bus (optional — activated only if connection string is configured)
         services.AddSingleton<IServiceBusPublisher>(sp =>
