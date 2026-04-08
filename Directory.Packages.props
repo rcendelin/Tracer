@@ -8,6 +8,11 @@
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.0-preview.4.25258.110" />
   </ItemGroup>
 
+  <ItemGroup Label="Extensions">
+    <!-- Explicit ref needed in non-Web SDK projects (e.g. Tracer.Infrastructure) that implement IHealthCheck -->
+    <PackageVersion Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="10.0.0-preview.4.25258.110" />
+  </ItemGroup>
+
   <ItemGroup Label="Logging + Abstractions">
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0-preview.4.25258.110" />
   </ItemGroup>

@@ -104,8 +104,10 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
     options.KnownIPNetworks.Add(System.Net.IPNetwork.Parse("192.168.0.0/16"));
 });
 
-// Health checks
-builder.Services.AddHealthChecks();
+// Health checks — SQL connectivity probe (catches misconfigured connection strings early)
+builder.Services.AddHealthChecks()
+    .AddCheck("self", () => Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy("API is running"))
+    .AddInfrastructureHealthChecks();
 
 // ProblemDetails (RFC 7807)
 builder.Services.AddProblemDetails();
@@ -148,7 +150,24 @@ app.UseApiKeyAuth();
 app.UseRateLimiter();
 
 // Endpoints
-app.MapHealthChecks("/health");
+app.MapHealthChecks("/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    ResponseWriter = async (context, report) =>
+    {
+        context.Response.ContentType = "application/json";
+        var result = new
+        {
+            status = report.Status.ToString(),
+            checks = report.Entries.Select(e => new
+            {
+                name = e.Key,
+                status = e.Value.Status.ToString(),
+                description = e.Value.Description,
+            }),
+        };
+        await context.Response.WriteAsJsonAsync(result).ConfigureAwait(false);
+    },
+});
 app.MapTraceEndpoints();
 app.MapProfileEndpoints();
 app.MapChangesEndpoints();

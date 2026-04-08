@@ -7,6 +7,7 @@ using Tracer.Application.Services;
 using Tracer.Domain.Entities;
 using Tracer.Domain.Enums;
 using Tracer.Domain.Interfaces;
+using Tracer.Domain.ValueObjects;
 
 namespace Tracer.Application.Tests.Services;
 
@@ -89,6 +90,18 @@ public sealed class WaterfallOrchestratorTests
     public async Task ExecuteAsync_ReturnsProfileWithConfidence()
     {
         var provider = CreateMockProvider("ares", 10, canHandle: true);
+
+        // CkbPersistenceService sets OverallConfidence on the profile (real impl calls scorer).
+        // Configure the mock to simulate this so the returned profile has a non-null confidence.
+        _persistenceService
+            .When(x => x.PersistEnrichmentAsync(
+                Arg.Any<CompanyProfile>(),
+                Arg.Any<IReadOnlyCollection<(string, ProviderResult)>>(),
+                Arg.Any<MergeResult>(),
+                Arg.Any<Guid>(),
+                Arg.Any<CancellationToken>()))
+            .Do(call => call.Arg<CompanyProfile>().SetOverallConfidence(Confidence.Create(0.9)));
+
         var sut = CreateSut(provider);
 
         var result = await sut.ExecuteAsync(CreateRequest(), CancellationToken.None);

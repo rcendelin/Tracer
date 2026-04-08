@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Http.Resilience;
 using Tracer.Domain.Interfaces;
 using Tracer.Infrastructure.Persistence;
@@ -228,5 +229,14 @@ public static class InfrastructureServiceRegistration
         // only when ConnectionStrings:ServiceBus is configured, to avoid startup failures.
 
         return services;
+    }
+
+    /// <summary>
+    /// Registers Infrastructure-layer health checks (database connectivity).
+    /// Kept here because <see cref="Persistence.TracerDbContext"/> is internal to Infrastructure.
+    /// </summary>
+    public static IHealthChecksBuilder AddInfrastructureHealthChecks(this IHealthChecksBuilder builder)
+    {
+        return builder.AddCheck<HealthChecks.DatabaseHealthCheck>("database");
     }
 }

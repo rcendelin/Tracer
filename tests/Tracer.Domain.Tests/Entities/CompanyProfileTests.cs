@@ -4,6 +4,7 @@ using Tracer.Domain.Enums;
 using Tracer.Domain.Events;
 using Tracer.Domain.ValueObjects;
 
+
 namespace Tracer.Domain.Tests.Entities;
 
 public sealed class CompanyProfileTests
@@ -21,6 +22,18 @@ public sealed class CompanyProfileTests
         new()
         {
             Value = value,
+            Confidence = Confidence.Create(confidence),
+            Source = source,
+            EnrichedAt = DateTimeOffset.UtcNow,
+        };
+
+    private static TracedField<Address> CreateAddressField(
+        string city = "Praha",
+        string source = "ares",
+        double confidence = 0.9) =>
+        new()
+        {
+            Value = new Address { Street = "Testovní 1", City = city, PostalCode = "11000", Country = "CZ" },
             Confidence = Confidence.Create(confidence),
             Source = source,
             EnrichedAt = DateTimeOffset.UtcNow,
@@ -301,19 +314,28 @@ public sealed class CompanyProfileTests
     [Theory]
     [InlineData(FieldName.EntityStatus, ChangeSeverity.Critical)]
     [InlineData(FieldName.LegalName, ChangeSeverity.Major)]
-    [InlineData(FieldName.RegisteredAddress, ChangeSeverity.Major)]
     [InlineData(FieldName.Phone, ChangeSeverity.Minor)]
     [InlineData(FieldName.Email, ChangeSeverity.Minor)]
     [InlineData(FieldName.Website, ChangeSeverity.Minor)]
-    public void UpdateField_ExistingField_HasCorrectSeverity(FieldName fieldName, ChangeSeverity expectedSeverity)
+    public void UpdateField_StringField_HasCorrectSeverity(FieldName fieldName, ChangeSeverity expectedSeverity)
     {
         var sut = CreateSut();
-        // First set the field
         sut.UpdateField(fieldName, CreateStringField("old-value"), "ares");
-        // Then update it to trigger Updated change type
         var change = sut.UpdateField(fieldName, CreateStringField("new-value"), "gleif");
 
         change.Should().NotBeNull();
         change!.Severity.Should().Be(expectedSeverity);
+    }
+
+    [Fact]
+    public void UpdateField_RegisteredAddress_HasMajorSeverity()
+    {
+        // RegisteredAddress is TracedField<Address>, not TracedField<string>
+        var sut = CreateSut();
+        sut.UpdateField(FieldName.RegisteredAddress, CreateAddressField("Praha"), "ares");
+        var change = sut.UpdateField(FieldName.RegisteredAddress, CreateAddressField("Brno"), "gleif");
+
+        change.Should().NotBeNull();
+        change!.Severity.Should().Be(ChangeSeverity.Major);
     }
 }

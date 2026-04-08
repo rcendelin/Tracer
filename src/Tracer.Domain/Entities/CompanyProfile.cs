@@ -1,3 +1,4 @@
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using Tracer.Domain.Common;
 using Tracer.Domain.Enums;
@@ -13,6 +14,15 @@ namespace Tracer.Domain.Entities;
 /// </summary>
 public sealed class CompanyProfile : BaseEntity, IAggregateRoot
 {
+    // UnsafeRelaxedJsonEscaping keeps +, <, >, &, etc. as-is for human-readable change event JSON.
+    // These strings are stored in ChangeEvents, exposed via GET /api/changes, and pushed via SignalR.
+    // XSS risk is mitigated at the rendering layer: React JSX auto-escapes all interpolated values.
+    // Do NOT render this data via innerHTML or any unsafe HTML injection mechanism (CWE-79).
+    private static readonly JsonSerializerOptions ChangeJsonOptions = new()
+    {
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+    };
+
     // EF Core parameterless constructor
     private CompanyProfile() { }
 
@@ -102,7 +112,7 @@ public sealed class CompanyProfile : BaseEntity, IAggregateRoot
         ArgumentException.ThrowIfNullOrWhiteSpace(source, nameof(source));
 
         var currentJson = GetFieldValueJson(fieldName);
-        var newJson = JsonSerializer.Serialize(newValue.Value);
+        var newJson = JsonSerializer.Serialize(newValue.Value, ChangeJsonOptions);
 
         if (currentJson == newJson)
             return null;
@@ -211,20 +221,20 @@ public sealed class CompanyProfile : BaseEntity, IAggregateRoot
 
     private string? GetFieldValueJson(FieldName fieldName) => fieldName switch
     {
-        FieldName.LegalName => LegalName is not null ? JsonSerializer.Serialize(LegalName.Value) : null,
-        FieldName.TradeName => TradeName is not null ? JsonSerializer.Serialize(TradeName.Value) : null,
-        FieldName.TaxId => TaxId is not null ? JsonSerializer.Serialize(TaxId.Value) : null,
-        FieldName.LegalForm => LegalForm is not null ? JsonSerializer.Serialize(LegalForm.Value) : null,
-        FieldName.RegisteredAddress => RegisteredAddress is not null ? JsonSerializer.Serialize(RegisteredAddress.Value) : null,
-        FieldName.OperatingAddress => OperatingAddress is not null ? JsonSerializer.Serialize(OperatingAddress.Value) : null,
-        FieldName.Phone => Phone is not null ? JsonSerializer.Serialize(Phone.Value) : null,
-        FieldName.Email => Email is not null ? JsonSerializer.Serialize(Email.Value) : null,
-        FieldName.Website => Website is not null ? JsonSerializer.Serialize(Website.Value) : null,
-        FieldName.Industry => Industry is not null ? JsonSerializer.Serialize(Industry.Value) : null,
-        FieldName.EmployeeRange => EmployeeRange is not null ? JsonSerializer.Serialize(EmployeeRange.Value) : null,
-        FieldName.EntityStatus => EntityStatus is not null ? JsonSerializer.Serialize(EntityStatus.Value) : null,
-        FieldName.ParentCompany => ParentCompany is not null ? JsonSerializer.Serialize(ParentCompany.Value) : null,
-        FieldName.Location => Location is not null ? JsonSerializer.Serialize(Location.Value) : null,
+        FieldName.LegalName => LegalName is not null ? JsonSerializer.Serialize(LegalName.Value, ChangeJsonOptions) : null,
+        FieldName.TradeName => TradeName is not null ? JsonSerializer.Serialize(TradeName.Value, ChangeJsonOptions) : null,
+        FieldName.TaxId => TaxId is not null ? JsonSerializer.Serialize(TaxId.Value, ChangeJsonOptions) : null,
+        FieldName.LegalForm => LegalForm is not null ? JsonSerializer.Serialize(LegalForm.Value, ChangeJsonOptions) : null,
+        FieldName.RegisteredAddress => RegisteredAddress is not null ? JsonSerializer.Serialize(RegisteredAddress.Value, ChangeJsonOptions) : null,
+        FieldName.OperatingAddress => OperatingAddress is not null ? JsonSerializer.Serialize(OperatingAddress.Value, ChangeJsonOptions) : null,
+        FieldName.Phone => Phone is not null ? JsonSerializer.Serialize(Phone.Value, ChangeJsonOptions) : null,
+        FieldName.Email => Email is not null ? JsonSerializer.Serialize(Email.Value, ChangeJsonOptions) : null,
+        FieldName.Website => Website is not null ? JsonSerializer.Serialize(Website.Value, ChangeJsonOptions) : null,
+        FieldName.Industry => Industry is not null ? JsonSerializer.Serialize(Industry.Value, ChangeJsonOptions) : null,
+        FieldName.EmployeeRange => EmployeeRange is not null ? JsonSerializer.Serialize(EmployeeRange.Value, ChangeJsonOptions) : null,
+        FieldName.EntityStatus => EntityStatus is not null ? JsonSerializer.Serialize(EntityStatus.Value, ChangeJsonOptions) : null,
+        FieldName.ParentCompany => ParentCompany is not null ? JsonSerializer.Serialize(ParentCompany.Value, ChangeJsonOptions) : null,
+        FieldName.Location => Location is not null ? JsonSerializer.Serialize(Location.Value, ChangeJsonOptions) : null,
         _ => null,
     };
 
