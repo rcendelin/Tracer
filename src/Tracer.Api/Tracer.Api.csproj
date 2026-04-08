@@ -3,6 +3,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
     <PackageReference Include="Serilog.AspNetCore" />
+    <PackageReference Include="Azure.Monitor.OpenTelemetry.AspNetCore" />
   </ItemGroup>
 
   <!-- Allow integration test projects to access internal types (e.g. Program for WebApplicationFactory) -->

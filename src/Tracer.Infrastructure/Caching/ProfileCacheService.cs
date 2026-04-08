@@ -10,11 +10,13 @@ namespace Tracer.Infrastructure.Caching;
 /// <summary>
 /// Distributed cache implementation for company profile DTOs.
 /// Uses <see cref="IDistributedCache"/> (in-memory for MVP, Redis in Phase 4).
+/// Records cache hit/miss metrics via <see cref="ITracerMetrics"/>.
 /// </summary>
 internal sealed partial class ProfileCacheService : IProfileCacheService
 {
     private readonly IDistributedCache _cache;
     private readonly CacheOptions _options;
+    private readonly ITracerMetrics _metrics;
     private readonly ILogger<ProfileCacheService> _logger;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -25,10 +27,12 @@ internal sealed partial class ProfileCacheService : IProfileCacheService
     public ProfileCacheService(
         IDistributedCache cache,
         IOptions<CacheOptions> options,
+        ITracerMetrics metrics,
         ILogger<ProfileCacheService> logger)
     {
         _cache = cache;
         _options = options.Value;
+        _metrics = metrics;
         _logger = logger;
     }
 
@@ -44,10 +48,12 @@ internal sealed partial class ProfileCacheService : IProfileCacheService
             if (bytes is null)
             {
                 LogCacheMiss(normalizedKey);
+                _metrics.RecordCacheMiss();
                 return null;
             }
 
             LogCacheHit(normalizedKey);
+            _metrics.RecordCacheHit();
             return JsonSerializer.Deserialize<CompanyProfileDto>(bytes, JsonOptions);
         }
         #pragma warning disable CA1031 // Cache failures must not break the enrichment pipeline

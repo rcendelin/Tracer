@@ -17,6 +17,7 @@ using Microsoft.Extensions.Logging;
 using Tracer.Infrastructure.Providers.CompaniesHouse;
 using Tracer.Infrastructure.Providers.AbnLookup;
 using Tracer.Infrastructure.Providers.SecEdgar;
+using Tracer.Infrastructure.Telemetry;
 
 namespace Tracer.Infrastructure;
 
@@ -34,6 +35,9 @@ public static class InfrastructureServiceRegistration
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(connectionString, nameof(connectionString));
 
+        // Observability metrics — Singleton because Meter is thread-safe and long-lived
+        services.AddSingleton<ITracerMetrics, TracerMetrics>();
+
         services.AddDbContext<TracerDbContext>(options =>
             options.UseSqlServer(connectionString, sql =>
             {
@@ -45,6 +49,8 @@ public static class InfrastructureServiceRegistration
 
         // Distributed cache (in-memory for MVP, switch to Redis in Phase 4)
         services.AddDistributedMemoryCache();
+        services.AddOptions<Caching.CacheOptions>()
+            .BindConfiguration(Caching.CacheOptions.SectionName);
         services.AddSingleton<IProfileCacheService, Caching.ProfileCacheService>();
         services.AddScoped<ITraceRequestRepository, TraceRequestRepository>();
         services.AddScoped<ICompanyProfileRepository, CompanyProfileRepository>();

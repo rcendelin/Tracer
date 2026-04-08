@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Diagnostics;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using Tracer.Application.EventHandlers;
@@ -14,6 +15,7 @@ namespace Tracer.Application.Services;
 /// Tier 2+ (priority > 100): sequential, with accumulated fields from Tier 1.
 /// Publishes SignalR notifications after each provider completes.
 /// Uses GoldenRecordMerger for result merging and CkbPersistenceService for persistence.
+/// Records observability metrics via ITracerMetrics.
 /// </summary>
 public sealed partial class WaterfallOrchestrator : IWaterfallOrchestrator
 {
@@ -22,6 +24,7 @@ public sealed partial class WaterfallOrchestrator : IWaterfallOrchestrator
     private readonly IGoldenRecordMerger _merger;
     private readonly ICkbPersistenceService _persistenceService;
     private readonly IMediator _mediator;
+    private readonly ITracerMetrics _metrics;
     private readonly ILogger<WaterfallOrchestrator> _logger;
 
     private const int Tier1MaxPriority = 100;
@@ -33,6 +36,7 @@ public sealed partial class WaterfallOrchestrator : IWaterfallOrchestrator
         IGoldenRecordMerger merger,
         ICkbPersistenceService persistenceService,
         IMediator mediator,
+        ITracerMetrics metrics,
         ILogger<WaterfallOrchestrator> logger)
     {
         _providers = providers;
@@ -40,6 +44,7 @@ public sealed partial class WaterfallOrchestrator : IWaterfallOrchestrator
         _merger = merger;
         _persistenceService = persistenceService;
         _mediator = mediator;
+        _metrics = metrics;
         _logger = logger;
     }
 
@@ -47,8 +52,11 @@ public sealed partial class WaterfallOrchestrator : IWaterfallOrchestrator
     {
         ArgumentNullException.ThrowIfNull(request);
 
+        var traceStopwatch = Stopwatch.StartNew();
+
         // 1. CKB lookup
         var profile = await FindExistingProfileAsync(request, cancellationToken).ConfigureAwait(false);
+        var isNewProfile = profile is null;
 
         // 2. Build trace context
         var context = new TraceContext
@@ -133,6 +141,17 @@ public sealed partial class WaterfallOrchestrator : IWaterfallOrchestrator
         var successCount = sourceResults.Count(r => r.Result.Found);
         LogOrchestratorComplete(profile.NormalizedKey, successCount);
 
+        // 9. Record trace-level metrics
+        _metrics.RecordTraceDuration(request.Depth.ToString(), traceStopwatch.Elapsed.TotalMilliseconds);
+
+        // isNewProfile is accurate for RegistrationId-based lookups (CKB key is deterministic).
+        // For name-only requests (no RegistrationId/Country), FindExistingProfileAsync always returns
+        // null because name-based CKB lookup is not implemented — so every name-only trace
+        // increments this counter. A precise fix requires CkbPersistenceService to return
+        // an insert/update discriminator; deferred to a future task.
+        if (isNewProfile)
+            _metrics.RecordCkbProfileCreated();
+
         return profile;
     }
 
@@ -142,6 +161,11 @@ public sealed partial class WaterfallOrchestrator : IWaterfallOrchestrator
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(PerProviderTimeout);
 
+        // Add ProviderId to the logging scope so all log messages within this call
+        // include the provider identifier as a structured property.
+        using var logScope = _logger.BeginScope(
+            new Dictionary<string, object?> { ["ProviderId"] = provider.ProviderId });
+
         try
         {
             LogProviderStarting(provider.ProviderId);
@@ -149,6 +173,10 @@ public sealed partial class WaterfallOrchestrator : IWaterfallOrchestrator
             var result = await provider.EnrichAsync(context, timeoutCts.Token).ConfigureAwait(false);
 
             LogProviderCompleted(provider.ProviderId, result.Status, result.Duration.TotalMilliseconds);
+
+            _metrics.RecordProviderDuration(provider.ProviderId, result.Duration.TotalMilliseconds, success: result.Found);
+            if (result.Found)
+                _metrics.RecordProviderFieldsEnriched(provider.ProviderId, result.Fields.Count);
 
             return (provider.ProviderId, result);
         }
@@ -160,6 +188,7 @@ public sealed partial class WaterfallOrchestrator : IWaterfallOrchestrator
         {
             // Per-provider timeout
             LogProviderTimeout(provider.ProviderId);
+            _metrics.RecordProviderDuration(provider.ProviderId, PerProviderTimeout.TotalMilliseconds, success: false);
             return (provider.ProviderId, ProviderResult.Timeout(PerProviderTimeout));
         }
         #pragma warning disable CA1031 // Intentional: safe wrapper must catch all provider exceptions
@@ -167,6 +196,7 @@ public sealed partial class WaterfallOrchestrator : IWaterfallOrchestrator
         {
             LogProviderException(ex, provider.ProviderId);
         #pragma warning restore CA1031
+            _metrics.RecordProviderDuration(provider.ProviderId, 0, success: false);
             return (provider.ProviderId, ProviderResult.Error(
                 "Provider execution failed", TimeSpan.Zero));
         }

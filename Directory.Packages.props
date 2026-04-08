@@ -43,6 +43,13 @@
     <PackageVersion Include="Serilog.Sinks.ApplicationInsights" Version="4.0.0" />
   </ItemGroup>
 
+  <ItemGroup Label="Telemetry">
+    <!-- Azure Monitor OpenTelemetry distro: exports metrics + distributed traces to Application Insights.
+         Automatically picks up System.Diagnostics.Metrics meters (e.g. "Tracer" meter).
+         Connection string via APPLICATIONINSIGHTS_CONNECTION_STRING env var or appsettings. -->
+    <PackageVersion Include="Azure.Monitor.OpenTelemetry.AspNetCore" Version="1.3.0" />
+  </ItemGroup>
+
   <ItemGroup Label="HTML Parsing">
     <PackageVersion Include="AngleSharp" Version="1.2.0" />
   </ItemGroup>

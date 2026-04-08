@@ -1,19 +1,48 @@
 using System.Globalization;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
+using Azure.Monitor.OpenTelemetry.AspNetCore;
+using OpenTelemetry.Trace;
 using Microsoft.AspNetCore.HttpOverrides;
 using Serilog;
 using Tracer.Application;
 using Tracer.Api.Endpoints;
 using Tracer.Api.Middleware;
+using Tracer.Api.Telemetry;
+using Tracer.Application.Services;
 using Tracer.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Serilog
+// Serilog — enriched with W3C TraceId/SpanId from the active OpenTelemetry Activity.
+// ActivityTraceEnricher adds TraceId and SpanId properties to every log event,
+// enabling correlation between Serilog logs and App Insights distributed traces.
 builder.Host.UseSerilog((ctx, lc) => lc
     .ReadFrom.Configuration(ctx.Configuration)
+    .Enrich.With<ActivityTraceEnricher>()
     .WriteTo.Console(formatProvider: CultureInfo.InvariantCulture));
+
+// OpenTelemetry + Azure Monitor (conditional)
+// UseAzureMonitor exports distributed traces and metrics to Application Insights.
+// Connection string from APPLICATIONINSIGHTS_CONNECTION_STRING env var or AzureMonitor:ConnectionString config.
+// If neither is set (local dev, CI), we still register the metric pipeline — instruments are readable
+// via dotnet-counters or any local MeterListener. Tests pass without App Insights configured.
+var appInsightsConnectionString =
+    Environment.GetEnvironmentVariable("APPLICATIONINSIGHTS_CONNECTION_STRING")
+    ?? builder.Configuration["AzureMonitor:ConnectionString"];
+
+// WithTracing is always registered so Activity.Current is populated for every HTTP request.
+// This ensures ActivityTraceEnricher produces TraceId/SpanId in Serilog logs even in local dev,
+// where UseAzureMonitor (below) is skipped. ASP.NET Core and HttpClient instrumentation
+// packages are included transitively by Azure.Monitor.OpenTelemetry.AspNetCore.
+var otelBuilder = builder.Services.AddOpenTelemetry()
+    .WithMetrics(metrics => metrics.AddMeter(ITracerMetrics.MeterName))
+    .WithTracing(tracing => tracing
+        .AddAspNetCoreInstrumentation()
+        .AddHttpClientInstrumentation());
+
+if (!string.IsNullOrWhiteSpace(appInsightsConnectionString))
+    otelBuilder.UseAzureMonitor(options => options.ConnectionString = appInsightsConnectionString);
 
 // OpenAPI
 builder.Services.AddOpenApi();

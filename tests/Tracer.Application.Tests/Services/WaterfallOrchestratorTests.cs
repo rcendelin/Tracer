@@ -1,6 +1,7 @@
 using FluentAssertions;
 using MediatR;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Tracer.Application.Services;
 using Tracer.Domain.Entities;
@@ -15,10 +16,11 @@ public sealed class WaterfallOrchestratorTests
     private readonly IGoldenRecordMerger _merger = new GoldenRecordMerger(new ConfidenceScorer());
     private readonly ICkbPersistenceService _persistenceService = Substitute.For<ICkbPersistenceService>();
     private readonly IMediator _mediator = Substitute.For<IMediator>();
-    private readonly ILogger<WaterfallOrchestrator> _logger = Substitute.For<ILogger<WaterfallOrchestrator>>();
+    private readonly ITracerMetrics _metrics = Substitute.For<ITracerMetrics>();
+    private readonly ILogger<WaterfallOrchestrator> _logger = NullLogger<WaterfallOrchestrator>.Instance;
 
     private WaterfallOrchestrator CreateSut(params IEnrichmentProvider[] providers) =>
-        new(providers, _profileRepo, _merger, _persistenceService, _mediator, _logger);
+        new(providers, _profileRepo, _merger, _persistenceService, _mediator, _metrics, _logger);
 
     private static TraceRequest CreateRequest(
         string? companyName = "Acme s.r.o.",
