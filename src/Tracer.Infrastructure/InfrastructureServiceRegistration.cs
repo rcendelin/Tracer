@@ -19,7 +19,10 @@ using Tracer.Infrastructure.Providers.CompaniesHouse;
 using Tracer.Infrastructure.Providers.AbnLookup;
 using Tracer.Infrastructure.Providers.SecEdgar;
 using Tracer.Infrastructure.Providers.WebScraper;
+using Tracer.Infrastructure.Providers.AiExtractor;
 using Tracer.Infrastructure.Telemetry;
+using Azure;
+using Azure.AI.OpenAI;
 
 namespace Tracer.Infrastructure;
 
@@ -243,6 +246,35 @@ public static class InfrastructureServiceRegistration
 
         // Provider registered after its HTTP client dependency (follows project convention)
         services.AddTransient<IEnrichmentProvider, Providers.WebScraper.WebScraperProvider>();
+
+        // Azure OpenAI — AI Extractor client (optional: only registered if endpoint is configured)
+        // AzureOpenAIClient is Singleton: thread-safe, manages its own HTTP pipeline.
+        // AiExtractorClient is Singleton: stateless per-call; _chatClient is thread-safe.
+        services.AddSingleton<IAiExtractorClient>(sp =>
+        {
+            var cfg = sp.GetRequiredService<IConfiguration>();
+            var endpoint = cfg["Providers:AzureOpenAI:Endpoint"];
+            if (string.IsNullOrWhiteSpace(endpoint))
+            {
+                // Optional provider — if not configured, return a no-op implementation
+                // so the DI container resolves without error. AiExtractorProvider.CanHandle
+                // will return false when the client is null.
+                return new NullAiExtractorClient();
+            }
+
+            var deploymentName = cfg["Providers:AzureOpenAI:DeploymentName"] ?? "gpt-4o-mini";
+            var maxTokens = int.TryParse(cfg["Providers:AzureOpenAI:MaxTokens"], out var t) ? t : 2000;
+
+            // Azure.AI.OpenAI 2.x uses AzureKeyCredential when a key is provided;
+            // falls back to DefaultAzureCredential (Managed Identity) when key is absent.
+            var apiKey = cfg["Providers:AzureOpenAI:ApiKey"];
+            var azureClient = string.IsNullOrWhiteSpace(apiKey)
+                ? new AzureOpenAIClient(new Uri(endpoint), new Azure.Identity.DefaultAzureCredential())
+                : new AzureOpenAIClient(new Uri(endpoint), new AzureKeyCredential(apiKey));
+
+            var logger = sp.GetRequiredService<ILogger<AiExtractorClient>>();
+            return new AiExtractorClient(azureClient, deploymentName, maxTokens, logger);
+        });
 
         // Service Bus (optional — activated only if connection string is configured)
         services.AddSingleton<IServiceBusPublisher>(sp =>
