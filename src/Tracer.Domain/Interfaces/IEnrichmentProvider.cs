@@ -7,6 +7,13 @@ namespace Tracer.Domain.Interfaces;
 /// <remarks>
 /// Providers are executed in <see cref="Priority"/> order by the waterfall orchestrator.
 /// Lower priority values run first. Within the same tier, providers may run in parallel.
+/// <para>
+/// <strong>Thread-safety constraint:</strong> Tier 1 providers (priority ≤ 100) are executed in
+/// parallel via <c>Task.WhenAll</c>. Implementations must not access the EF Core
+/// <c>DbContext</c> (directly or via a repository) because the DbContext is not thread-safe and
+/// is scoped per request. All CKB data needed by a provider must be pre-loaded and passed through
+/// <see cref="TraceContext.ExistingProfile"/> or <see cref="TraceContext.AccumulatedFields"/>.
+/// </para>
 /// </remarks>
 public interface IEnrichmentProvider
 {
