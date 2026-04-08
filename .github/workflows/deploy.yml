@@ -118,61 +118,27 @@ jobs:
           echo "appServiceName=tracer-${{ env.ENVIRONMENT }}-api" >> "$GITHUB_OUTPUT"
 
       - name: Store secrets in Key Vault
+        # All secrets exposed as env vars (never inline ${{ secrets.* }} in shell — CWE-78)
+        env:
+          KV_TRACER_DB: ${{ secrets.TRACER_DB_CONNECTION_STRING }}
+          KV_SERVICE_BUS: ${{ secrets.SERVICE_BUS_CONNECTION_STRING }}
+          KV_GOOGLE_MAPS: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+          KV_AZURE_MAPS: ${{ secrets.AZURE_MAPS_SUBSCRIPTION_KEY }}
+          KV_COMPANIES_HOUSE: ${{ secrets.COMPANIES_HOUSE_API_KEY }}
+          KV_ABN_GUID: ${{ secrets.ABN_LOOKUP_GUID }}
+          KV_API_KEY: ${{ secrets.TRACER_API_KEY }}
         run: |
           KV_NAME="tracer-${{ env.ENVIRONMENT }}-kv"
 
-          # Database connection string (uses managed identity in prod; SQL auth for test)
-          az keyvault secret set \
-            --vault-name "$KV_NAME" \
-            --name "ConnectionStrings--TracerDb" \
-            --value "${{ secrets.TRACER_DB_CONNECTION_STRING }}" \
-            --output none
+          az keyvault secret set --vault-name "$KV_NAME" --name "ConnectionStrings--TracerDb" --value "$KV_TRACER_DB" --output none
+          az keyvault secret set --vault-name "$KV_NAME" --name "ConnectionStrings--ServiceBus" --value "$KV_SERVICE_BUS" --output none
+          az keyvault secret set --vault-name "$KV_NAME" --name "Providers--GoogleMaps--ApiKey" --value "$KV_GOOGLE_MAPS" --output none
+          az keyvault secret set --vault-name "$KV_NAME" --name "Providers--AzureMaps--SubscriptionKey" --value "$KV_AZURE_MAPS" --output none
+          az keyvault secret set --vault-name "$KV_NAME" --name "Auth--ApiKeys--0" --value "$KV_API_KEY" --output none
 
-          # Service Bus connection string
-          az keyvault secret set \
-            --vault-name "$KV_NAME" \
-            --name "ConnectionStrings--ServiceBus" \
-            --value "${{ secrets.SERVICE_BUS_CONNECTION_STRING }}" \
-            --output none
-
-          # Google Maps API key
-          az keyvault secret set \
-            --vault-name "$KV_NAME" \
-            --name "Providers--GoogleMaps--ApiKey" \
-            --value "${{ secrets.GOOGLE_MAPS_API_KEY }}" \
-            --output none
-
-          # Azure Maps subscription key
-          az keyvault secret set \
-            --vault-name "$KV_NAME" \
-            --name "Providers--AzureMaps--SubscriptionKey" \
-            --value "${{ secrets.AZURE_MAPS_SUBSCRIPTION_KEY }}" \
-            --output none
-
-          # Companies House API key (optional)
-          if [ -n "${{ secrets.COMPANIES_HOUSE_API_KEY }}" ]; then
-            az keyvault secret set \
-              --vault-name "$KV_NAME" \
-              --name "Providers--CompaniesHouse--ApiKey" \
-              --value "${{ secrets.COMPANIES_HOUSE_API_KEY }}" \
-              --output none
-          fi
-
-          # ABN Lookup GUID (optional)
-          if [ -n "${{ secrets.ABN_LOOKUP_GUID }}" ]; then
-            az keyvault secret set \
-              --vault-name "$KV_NAME" \
-              --name "Providers--AbnLookup--Guid" \
-              --value "${{ secrets.ABN_LOOKUP_GUID }}" \
-              --output none
-          fi
-
-          # API auth key for Tracer API
-          az keyvault secret set \
-            --vault-name "$KV_NAME" \
-            --name "Auth--ApiKeys--0" \
-            --value "${{ secrets.TRACER_API_KEY }}" \
-            --output none
+          # Optional secrets — check env var, not ${{ }} expression (safe for special chars)
+          [ -n "$KV_COMPANIES_HOUSE" ] && az keyvault secret set --vault-name "$KV_NAME" --name "Providers--CompaniesHouse--ApiKey" --value "$KV_COMPANIES_HOUSE" --output none || true
+          [ -n "$KV_ABN_GUID" ]        && az keyvault secret set --vault-name "$KV_NAME" --name "Providers--AbnLookup--Guid"         --value "$KV_ABN_GUID"         --output none || true
 
   deploy-api:
     name: Deploy API to App Service

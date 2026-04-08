@@ -34,10 +34,12 @@ resource webApp 'Microsoft.Web/sites@2024-04-01' = {
     httpsOnly: true
     siteConfig: {
       linuxFxVersion: 'DOTNETCORE|10.0'
-      alwaysOn: false
+      alwaysOn: false           // B1 SKU does not support Always On
       minTlsVersion: '1.2'
       ftpsState: 'Disabled'
       http20Enabled: true
+      remoteDebuggingEnabled: false
+      healthCheckPath: '/health'
       appSettings: [
         {
           name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'

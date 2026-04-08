@@ -66,11 +66,14 @@ module appService 'modules/app-service.bicep' = {
 }
 
 // Key Vault RBAC — Grant App Service managed identity Key Vault Secrets User role
-// Placed after both modules to avoid circular dependency
+// Use 'existing' reference to scope role assignment to the specific vault (least privilege)
 var keyVaultSecretsUserRoleId = '4633458b-17de-408a-b874-0445c86b69e6'
+resource existingKeyVault 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
+  name: keyVault.outputs.vaultName
+}
 resource appServiceKeyVaultAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(keyVault.outputs.vaultId, appService.outputs.principalId, keyVaultSecretsUserRoleId)
-  scope: resourceGroup()
+  scope: existingKeyVault
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', keyVaultSecretsUserRoleId)
     principalId: appService.outputs.principalId
@@ -98,10 +101,9 @@ module serviceBus 'modules/service-bus.bicep' = {
   }
 }
 
-// Outputs
+// Outputs — sensitive values (App Insights connection string, SQL FQDN) are NOT exported
+// to avoid exposure in deployment history. Retrieve them from Key Vault or Azure Portal.
 output apiUrl string = 'https://${appService.outputs.appServiceHostName}'
 output webUrl string = 'https://${staticWebApp.outputs.staticWebAppHostName}'
-output sqlServerFqdn string = sqlServer.outputs.serverFqdn
 output keyVaultUri string = keyVault.outputs.vaultUri
-output appInsightsConnectionString string = appInsights.outputs.connectionString
 output serviceBusNamespace string = serviceBus.outputs.namespaceName
