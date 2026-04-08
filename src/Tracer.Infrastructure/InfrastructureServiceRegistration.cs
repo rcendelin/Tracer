@@ -18,6 +18,7 @@ using Microsoft.Extensions.Logging;
 using Tracer.Infrastructure.Providers.CompaniesHouse;
 using Tracer.Infrastructure.Providers.AbnLookup;
 using Tracer.Infrastructure.Providers.SecEdgar;
+using Tracer.Infrastructure.Providers.WebScraper;
 using Tracer.Infrastructure.Telemetry;
 
 namespace Tracer.Infrastructure;
@@ -207,6 +208,37 @@ public static class InfrastructureServiceRegistration
             options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(10);
             options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(30);
             options.Retry.MaxRetryAttempts = 2;
+        });
+
+        // Web scraper — fetches company websites and extracts structured data via AngleSharp
+        // No retries: scraping is idempotent but retrying a slow or broken site wastes time.
+        // Polly timeout (10s) prevents hanging on unresponsive servers.
+        // AllowAutoRedirect = false: prevents SSRF bypass via 302 redirect to internal hosts
+        // (SSRF IP check runs before the request; redirect would bypass it).
+        services.AddHttpClient<IWebScraperClient, Providers.WebScraper.WebScraperClient>(client =>
+        {
+            client.Timeout = Timeout.InfiniteTimeSpan; // Polly controls timeouts
+            // Identify ourselves politely; some servers block blank User-Agents
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("Tracer/1.0 (tracer@xtuning.cz)");
+            // Accept HTML only — we decline to process other content types
+            client.DefaultRequestHeaders.Accept.ParseAdd("text/html,application/xhtml+xml;q=0.9");
+        })
+        .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+        {
+            // Disabled: a 302 to an internal host would bypass SSRF IP validation performed
+            // before the initial request. Without redirects, each target URL is independently
+            // validated.
+            AllowAutoRedirect = false,
+        })
+        .AddStandardResilienceHandler(options =>
+        {
+            options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(10);
+            // TotalRequestTimeout (15s) caps everything: a retry would get at most ~5s before
+            // being cancelled, so retrying a slow site has negligible cost in practice.
+            options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(15);
+            // Minimum allowed by Polly validator (must be ≥ 1); TotalRequestTimeout ensures
+            // the retry almost never completes anyway.
+            options.Retry.MaxRetryAttempts = 1;
         });
 
         // Service Bus (optional — activated only if connection string is configured)
