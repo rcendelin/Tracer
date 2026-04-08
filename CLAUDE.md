@@ -272,6 +272,8 @@ Two modes: Lightweight (re-check only expired fields against primary registry) a
 - **Deserializace enum odpovědí v testech** — API registruje `JsonStringEnumConverter` přes `ConfigureHttpJsonOptions` (ne `AddJsonOptions`). `response.Content.ReadFromJsonAsync<T>()` bez options selže nebo vrátí `0` pro enum hodnoty. Vždy předat `new JsonSerializerOptions { PropertyNameCaseInsensitive = true, Converters = { new JsonStringEnumConverter() } }`.
 - **Enum namespace aliasy (Contracts vs Domain)** — `Tracer.Contracts.Enums` i `Tracer.Domain.Enums` deklarují `TraceStatus` a `TraceDepth`. V testech pokrývajících obě vrstvy nutné aliasy: `using ContractsEnums = Tracer.Contracts.Enums; using DomainEnums = Tracer.Domain.Enums;`.
 - **`Confidence.Create(double)`** — factory metoda hodnoty objektu `Confidence` je `.Create(double value)`, nikoli `.From()`.
+- **`UseAzureMonitor()` je podmíněné** — `Program.cs` volá `UseAzureMonitor()` pouze pokud je nastavené `APPLICATIONINSIGHTS_CONNECTION_STRING` env var nebo `AzureMonitor:ConnectionString` v konfiguraci. Bez toho by `WebApplicationFactory` padla při startu s `OptionsValidationException` (SamplingDuration validation). `.WithMetrics(AddMeter(ITracerMetrics.MeterName))` a `.WithTracing(AddAspNetCoreInstrumentation)` jsou registrovány vždy pro lokální observabilitu.
+- **`ITracerMetrics.MeterName` jako interface const** — `TracerMetrics` je `internal sealed`; `Program.cs` přistupuje k názvu meteru přes `ITracerMetrics.MeterName` (const na interface = public). Nikdy nepřistupuj přímo na `TracerMetrics.MeterNameValue` z Api projektu.
 
 ## Git conventions
 
@@ -293,6 +295,10 @@ dotnet test
 cd src/Tracer.Api
 dotnet run
 
+# Smoke test Phase 2 (po deployi na Azure)
+./deploy/scripts/smoke-test-phase2.sh https://tracer-test-api.azurewebsites.net <API_KEY>
+# Deployment runbook: deploy/DEPLOYMENT.md
+
 # Frontend
 cd src/Tracer.Web
 npm install
@@ -307,10 +313,14 @@ All secrets via Azure Key Vault or user-secrets in development. Key configuratio
 - `ConnectionStrings:ServiceBus` — Service Bus connection string
 - `Providers:CompaniesHouse:ApiKey` — Companies House API key
 - `Providers:GoogleMaps:ApiKey` — Google Maps API key
+- `Providers:AzureMaps:SubscriptionKey` — Azure Maps subscription key
+- `Providers:AbnLookup:Guid` — ABN Lookup registration GUID (optional, AU companies)
 - `Providers:AzureOpenAI:Endpoint` — Azure OpenAI endpoint
 - `Revalidation:Enabled` — toggle re-validation engine (default: true)
 - `Revalidation:IntervalMinutes` — scheduler interval (default: 60)
 - `Revalidation:MaxProfilesPerRun` — batch size (default: 100)
+
+**Key Vault secret naming:** Azure Key Vault neumožňuje `:` v názvech secrets. Používej `--` jako separator — App Service automaticky překládá `--` → `:`. Příklad: secret `ConnectionStrings--TracerDb` → config key `ConnectionStrings:TracerDb`. Platí pro všechny `@Microsoft.KeyVault()` reference v `app-service.bicep`.
 
 ## Azure — Přísný zákaz destruktivních operací
 
