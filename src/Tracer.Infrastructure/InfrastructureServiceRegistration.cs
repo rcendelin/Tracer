@@ -19,6 +19,7 @@ using Tracer.Infrastructure.Providers.CompaniesHouse;
 using Tracer.Infrastructure.Providers.AbnLookup;
 using Tracer.Infrastructure.Providers.SecEdgar;
 using Tracer.Infrastructure.Providers.WebScraper;
+using Tracer.Infrastructure.Providers.Handelsregister;
 using Tracer.Infrastructure.Providers.AiExtractor;
 using Tracer.Infrastructure.Telemetry;
 using Azure;
@@ -246,6 +247,34 @@ public static class InfrastructureServiceRegistration
 
         // Provider registered after its HTTP client dependency (follows project convention)
         services.AddTransient<IEnrichmentProvider, Providers.WebScraper.WebScraperProvider>();
+
+        // Handelsregister.de — German commercial register scraper (Tier 2, Priority 200)
+        // No API key required; scraping with rate limit enforcement (60 req/hour per German law).
+        // Cookie support via SocketsHttpHandler; no auto-redirect for SSRF protection.
+        services.AddHttpClient<IHandelsregisterClient, HandelsregisterClient>(client =>
+        {
+            client.BaseAddress = new Uri("https://www.handelsregister.de/rp_web/");
+            client.Timeout = Timeout.InfiniteTimeSpan; // Polly controls all timeouts
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("Tracer/1.0 (tracer@xtuning.cz)");
+            client.DefaultRequestHeaders.Accept.ParseAdd("text/html,application/xhtml+xml;q=0.9");
+        })
+        .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+        {
+            // Cookie support for session management across search + detail requests
+            UseCookies = true,
+            CookieContainer = new System.Net.CookieContainer(),
+            // Disabled: a 302 to an internal host would bypass SSRF IP validation
+            AllowAutoRedirect = false,
+        })
+        .AddStandardResilienceHandler(options =>
+        {
+            options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(12);
+            options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(30);
+            // Minimum allowed by Polly validator; TotalRequestTimeout caps total cost
+            options.Retry.MaxRetryAttempts = 1;
+        });
+
+        services.AddTransient<IEnrichmentProvider, HandelsregisterProvider>();
 
         // Azure OpenAI — AI Extractor client (optional: only registered if endpoint is configured)
         // AzureOpenAIClient is Singleton: thread-safe, manages its own HTTP pipeline.

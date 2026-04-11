@@ -139,7 +139,8 @@ internal sealed partial class AiExtractorClient : IAiExtractorClient
         {
             // Log exception type only — JsonException.Message may contain fragments of the
             // raw AI response. Per project convention (CWE-209), no raw content in error logs.
-            LogParseError(ex.GetType().Name);
+            var exceptionTypeName = ex.GetType().Name;
+            LogParseError(exceptionTypeName);
             return null;
         }
     }
