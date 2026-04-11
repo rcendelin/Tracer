@@ -210,6 +210,7 @@ CompanyProfiles stores enriched fields as JSON columns via EF Core `ToJson()` ow
 | GLEIF LEI | Global | REST API, free, CC0 | Legal name, address, parent chain |
 | Google Maps Places | Global | REST API ($200/mo free) | Address, phone, website, GPS |
 | Azure Maps | Global | REST API (5K/day free) | Batch geocoding |
+| Handelsregister | DE | HTML scraping, free (60 req/h) | HRB/HRA number, legal name, address, legal form, officers |
 | Web Scraper | Global | AngleSharp + HttpClient | Structured data from company websites |
 | AI Extractor | Global | Azure OpenAI GPT-4o-mini | Structured extraction from unstructured text |
 
@@ -285,6 +286,9 @@ Two modes: Lightweight (re-check only expired fields against primary registry) a
 - **`WaterfallOrchestrator.DepthTimeoutOverride`** — `internal Func<TraceDepth, TimeSpan>? { get; init; }` testovací seam. Stejný vzor jako `DnsResolve` v `WebScraperClient` a `SendAsync` v `AiExtractorClient`. V testech nastav `DepthTimeoutOverride = _ => TimeSpan.FromMilliseconds(150)` aby se nemuselo čekat na reálné 5–30s depth budgety.
 - **`OperationCanceledException` three-way discrimination v `ExecuteProviderWithTimeoutAsync`** — Správný pattern: (1) `when (!cancellationToken.IsCancellationRequested && timeoutCts.Token.IsCancellationRequested)` = pouze per-provider timeout → vrať `ProviderResult.Timeout`; (2) jakýkoliv jiný OCE = depth budget nebo caller cancellation → re-throw. Outer `ExecuteAsync` catch rozlišuje depth budget (`effectiveCt.IsCancellationRequested && !originalCt.IsCancellationRequested`) od caller cancel. Pozor: `timeoutCts` je linked k `effectiveCt` → když depth budget vyprší, oba tokeny jsou cancelled → podmínka (1) je false → správně re-throw.
 - **`IEnrichmentProvider` DbContext constraint** — Tier 1 providery běží přes `Task.WhenAll` (paralelně). Implementace nesmí přistupovat k `DbContext` ani žádnému repository — EF Core DbContext není thread-safe. Veškerá CKB data musí být předána přes `TraceContext.ExistingProfile` / `TraceContext.AccumulatedFields`. Porušení způsobuje nedeterministické EF Core concurrency exception v produkci.
+- **Handelsregister rate limiting (60 req/h)** — `HandelsregisterClient` enforces German Data Usage Act §9 via a sliding-window `ConcurrentQueue<DateTimeOffset>` + `SemaphoreSlim`. Limit is per-instance; horizontal scaling requires distributed rate limiting (Redis). `Clock` property is injectable for testing. Do NOT increase the 60 req/h constant — it's a legal obligation.
+- **Registry scraper provider pattern (B-59)** — Tier 2 registry scrapers follow `WebScraperProvider` structure: `IClient` interface (search + detail), `Client` impl (AngleSharp HTML parsing, SSRF guard, rate limiting), `Provider` wrapper (CanHandle by country + regex, EnrichAsync with Stopwatch + timeout discrimination). For new registry scrapers (CNPJ, State SoS), clone the Handelsregister folder structure. Key: always return `ProviderResult.Error("generic message")` (CWE-209), log exception type only (`ex.GetType().Name`), not full stack.
+- **German status normalization** — `HandelsregisterProvider.NormalizeStatus()` maps German status strings to canonical English: `aktiv→active`, `gelöscht→dissolved`, `aufgelöst→in_liquidation`, `insolvent→insolvent`. Uses `OrdinalIgnoreCase` comparison (not `ToLowerInvariant`) to satisfy CA1308. Same pattern should apply to future non-English registry providers.
 
 ## Git conventions
 
