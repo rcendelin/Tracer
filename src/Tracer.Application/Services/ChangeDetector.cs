@@ -47,7 +47,10 @@ public sealed partial class ChangeDetector : IChangeDetector
             LogChangesDetected(profile.NormalizedKey, result.TotalChanges, result.HasCriticalChanges);
 
         if (result.HasCriticalChanges)
-            LogCriticalChanges(profile.NormalizedKey, result.GetBySeverity(ChangeSeverity.Critical).Count);
+        {
+            var criticalCount = result.GetBySeverity(ChangeSeverity.Critical).Count;
+            LogCriticalChanges(profile.NormalizedKey, criticalCount);
+        }
 
         return result;
     }
