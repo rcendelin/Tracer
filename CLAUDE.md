@@ -210,6 +210,7 @@ CompanyProfiles stores enriched fields as JSON columns via EF Core `ToJson()` ow
 | GLEIF LEI | Global | REST API, free, CC0 | Legal name, address, parent chain |
 | Google Maps Places | Global | REST API ($200/mo free) | Address, phone, website, GPS |
 | Azure Maps | Global | REST API (5K/day free) | Batch geocoding |
+| BrasilAPI CNPJ | BR | REST API, free, no key | CNPJ, legal name, trade name, address, CNAE, status, phone, email |
 | Handelsregister | DE | HTML scraping, free (60 req/h) | HRB/HRA number, legal name, address, legal form, officers |
 | Web Scraper | Global | AngleSharp + HttpClient | Structured data from company websites |
 | AI Extractor | Global | Azure OpenAI GPT-4o-mini | Structured extraction from unstructured text |
@@ -289,6 +290,9 @@ Two modes: Lightweight (re-check only expired fields against primary registry) a
 - **Handelsregister rate limiting (60 req/h)** — `HandelsregisterClient` enforces German Data Usage Act §9 via a sliding-window `ConcurrentQueue<DateTimeOffset>` + `SemaphoreSlim`. Limit is per-instance; horizontal scaling requires distributed rate limiting (Redis). `Clock` property is injectable for testing. Do NOT increase the 60 req/h constant — it's a legal obligation.
 - **Registry scraper provider pattern (B-59)** — Tier 2 registry scrapers follow `WebScraperProvider` structure: `IClient` interface (search + detail), `Client` impl (AngleSharp HTML parsing, SSRF guard, rate limiting), `Provider` wrapper (CanHandle by country + regex, EnrichAsync with Stopwatch + timeout discrimination). For new registry scrapers (CNPJ, State SoS), clone the Handelsregister folder structure. Key: always return `ProviderResult.Error("generic message")` (CWE-209), log exception type only (`ex.GetType().Name`), not full stack.
 - **German status normalization** — `HandelsregisterProvider.NormalizeStatus()` maps German status strings to canonical English: `aktiv→active`, `gelöscht→dissolved`, `aufgelöst→in_liquidation`, `insolvent→insolvent`. Uses `OrdinalIgnoreCase` comparison (not `ToLowerInvariant`) to satisfy CA1308. Same pattern should apply to future non-English registry providers.
+- **BrasilAPI CNPJ provider (B-60)** — `BrazilCnpjProvider` uses BrasilAPI (`brasilapi.com.br/api/cnpj/v1/{cnpj}`) — free REST JSON API, no key required. CNPJ-only lookup (no name search). Follows ARES pattern (not Handelsregister scraping pattern). `BrazilCnpjClient.NormalizeCnpj()` strips formatting chars (`.`, `-`, `/`) to 14 digits. `FormatCnpj()` converts back to `XX.XXX.XXX/XXXX-XX`. Portuguese status normalization: `ATIVA→active`, `BAIXADA→dissolved`, `SUSPENSA→suspended`, `INAPTA→inactive`, `NULA→annulled`.
+- **CNPJ format regex** — `^\d{14}$` for normalized CNPJ. Formatted: `^\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}$`. `BrazilCnpjClient.NormalizeCnpj()` handles both. `CanHandle()` normalizes before matching.
+- **Brazilian phone formatting** — BrasilAPI returns concatenated DDD+number (e.g. `"2132242164"`). `FormatBrazilPhone()` converts to `+55 (21) 3224-2164`. Handles both 10-digit (landline) and 11-digit (mobile) numbers.
 
 ## Git conventions
 
