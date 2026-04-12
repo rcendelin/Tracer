@@ -20,6 +20,7 @@ using Tracer.Infrastructure.Providers.AbnLookup;
 using Tracer.Infrastructure.Providers.SecEdgar;
 using Tracer.Infrastructure.Providers.WebScraper;
 using Tracer.Infrastructure.Providers.Handelsregister;
+using Tracer.Infrastructure.Providers.BrazilCnpj;
 using Tracer.Infrastructure.Providers.AiExtractor;
 using Tracer.Infrastructure.Telemetry;
 using Azure;
@@ -275,6 +276,24 @@ public static class InfrastructureServiceRegistration
         });
 
         services.AddTransient<IEnrichmentProvider, HandelsregisterProvider>();
+
+        // BrasilAPI CNPJ — Brazilian Federal Revenue company data (Tier 2, Priority 200)
+        // Free, no API key required. JSON REST API.
+        services.AddHttpClient<IBrazilCnpjClient, BrazilCnpjClient>(client =>
+        {
+            client.BaseAddress = new Uri("https://brasilapi.com.br/api/");
+            client.Timeout = Timeout.InfiniteTimeSpan; // Polly controls all timeouts
+            client.DefaultRequestHeaders.Accept.Add(
+                new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+        })
+        .AddStandardResilienceHandler(options =>
+        {
+            options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(10);
+            options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(30);
+            options.Retry.MaxRetryAttempts = 3;
+        });
+
+        services.AddTransient<IEnrichmentProvider, BrazilCnpjProvider>();
 
         // Azure OpenAI — AI Extractor client (optional: only registered if endpoint is configured)
         // AzureOpenAIClient is Singleton: thread-safe, manages its own HTTP pipeline.
