@@ -211,6 +211,7 @@ CompanyProfiles stores enriched fields as JSON columns via EF Core `ToJson()` ow
 | Google Maps Places | Global | REST API ($200/mo free) | Address, phone, website, GPS |
 | Azure Maps | Global | REST API (5K/day free) | Batch geocoding |
 | BrasilAPI CNPJ | BR | REST API, free, no key | CNPJ, legal name, trade name, address, CNAE, status, phone, email |
+| State SoS | US (CA/DE/NY) | HTML scraping, free (20 req/min) | Filing number, legal name, entity status, entity type |
 | Handelsregister | DE | HTML scraping, free (60 req/h) | HRB/HRA number, legal name, address, legal form, officers |
 | Web Scraper | Global | AngleSharp + HttpClient | Structured data from company websites |
 | AI Extractor | Global | Azure OpenAI GPT-4o-mini | Structured extraction from unstructured text |
@@ -293,6 +294,7 @@ Two modes: Lightweight (re-check only expired fields against primary registry) a
 - **BrasilAPI CNPJ provider (B-60)** — `BrazilCnpjProvider` uses BrasilAPI (`brasilapi.com.br/api/cnpj/v1/{cnpj}`) — free REST JSON API, no key required. CNPJ-only lookup (no name search). Follows ARES pattern (not Handelsregister scraping pattern). `BrazilCnpjClient.NormalizeCnpj()` strips formatting chars (`.`, `-`, `/`) to 14 digits. `FormatCnpj()` converts back to `XX.XXX.XXX/XXXX-XX`. Portuguese status normalization: `ATIVA→active`, `BAIXADA→dissolved`, `SUSPENSA→suspended`, `INAPTA→inactive`, `NULA→annulled`.
 - **CNPJ format regex** — `^\d{14}$` for normalized CNPJ. Formatted: `^\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}$`. `BrazilCnpjClient.NormalizeCnpj()` handles both. `CanHandle()` normalizes before matching.
 - **Brazilian phone formatting** — BrasilAPI returns concatenated DDD+number (e.g. `"2132242164"`). `FormatBrazilPhone()` converts to `+55 (21) 3224-2164`. Handles both 10-digit (landline) and 11-digit (mobile) numbers.
+- **US State SoS Strategy pattern (B-61)** — `StateSosProvider` uses a Strategy pattern: `IStateSosAdapter` interface per state (CA, DE, NY), `StateSosClient` dispatches to matching adapter(s). Adapters are registered as Singletons (stateless HTML parsers). To add a new state: create `Adapters/{State}Adapter.cs` implementing `IStateSosAdapter` + register in DI. `CanHandle()` checks `!AccumulatedFields.Contains(FieldName.RegistrationId)` to skip when SEC EDGAR (Priority 20) already enriched. RegistrationId format: `{state}:{filingNumber}` (e.g. `CA:C0806592`). Rate limit: 20 req/min (shared across states). US status normalization: `Active/Good Standing→active`, `Dissolved/Cancelled/Revoked→dissolved`, `Suspended/Forfeited→suspended`, `Merged/Converted→merged`.
 
 ## Git conventions
 
