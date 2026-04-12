@@ -21,6 +21,8 @@ using Tracer.Infrastructure.Providers.SecEdgar;
 using Tracer.Infrastructure.Providers.WebScraper;
 using Tracer.Infrastructure.Providers.Handelsregister;
 using Tracer.Infrastructure.Providers.BrazilCnpj;
+using Tracer.Infrastructure.Providers.StateSos;
+using Tracer.Infrastructure.Providers.StateSos.Adapters;
 using Tracer.Infrastructure.Providers.AiExtractor;
 using Tracer.Infrastructure.Telemetry;
 using Azure;
@@ -294,6 +296,35 @@ public static class InfrastructureServiceRegistration
         });
 
         services.AddTransient<IEnrichmentProvider, BrazilCnpjProvider>();
+
+        // US State Secretary of State registries (Tier 2, Priority 200)
+        // Per-state adapters: CA, DE, NY. Singletons — stateless HTML parsers.
+        services.AddSingleton<IStateSosAdapter, CaliforniaAdapter>();
+        services.AddSingleton<IStateSosAdapter, DelawareAdapter>();
+        services.AddSingleton<IStateSosAdapter, NewYorkAdapter>();
+
+        // StateSos client — HTML scraping with rate limiting and SSRF guard.
+        // No auto-redirect: prevents SSRF bypass via 302 to internal hosts.
+        services.AddHttpClient<IStateSosClient, StateSosClient>(client =>
+        {
+            client.Timeout = Timeout.InfiniteTimeSpan; // Polly controls all timeouts
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("Tracer/1.0 (tracer@xtuning.cz)");
+            client.DefaultRequestHeaders.Accept.ParseAdd("text/html,application/xhtml+xml;q=0.9");
+        })
+        .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+        {
+            UseCookies = true,
+            CookieContainer = new System.Net.CookieContainer(),
+            AllowAutoRedirect = false,
+        })
+        .AddStandardResilienceHandler(options =>
+        {
+            options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(12);
+            options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(30);
+            options.Retry.MaxRetryAttempts = 1;
+        });
+
+        services.AddTransient<IEnrichmentProvider, StateSosProvider>();
 
         // Azure OpenAI — AI Extractor client (optional: only registered if endpoint is configured)
         // AzureOpenAIClient is Singleton: thread-safe, manages its own HTTP pipeline.
