@@ -11,7 +11,8 @@ namespace Tracer.Application.Tests.Services;
 public sealed class EntityResolverTests
 {
     private readonly ICompanyProfileRepository _repo = Substitute.For<ICompanyProfileRepository>();
-    private EntityResolver CreateSut() => new(_repo);
+    private readonly ICompanyNameNormalizer _normalizer = new CompanyNameNormalizer();
+    private EntityResolver CreateSut() => new(_repo, _normalizer);
 
     // ── NormalizeName ───────────────────────────────────────────────
 

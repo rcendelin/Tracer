@@ -26,6 +26,7 @@ public static class ApplicationServiceRegistration
         services.AddScoped<IWaterfallOrchestrator, WaterfallOrchestrator>();
         services.AddSingleton<IConfidenceScorer, ConfidenceScorer>();
         services.AddSingleton<IGoldenRecordMerger, GoldenRecordMerger>();
+        services.AddSingleton<ICompanyNameNormalizer, CompanyNameNormalizer>();
         services.AddScoped<IEntityResolver, EntityResolver>();
         services.AddSingleton<IChangeDetector, ChangeDetector>();
         services.AddScoped<ICkbPersistenceService, CkbPersistenceService>();

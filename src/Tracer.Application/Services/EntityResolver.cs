@@ -1,7 +1,5 @@
-using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.RegularExpressions;
 using Tracer.Application.DTOs;
 using Tracer.Domain.Entities;
 using Tracer.Domain.Interfaces;
@@ -12,13 +10,15 @@ namespace Tracer.Application.Services;
 /// Resolves entity identity for CKB deduplication.
 /// Matching pipeline: RegistrationId+Country → NormalizedKey → null (new profile).
 /// </summary>
-public sealed partial class EntityResolver : IEntityResolver
+public sealed class EntityResolver : IEntityResolver
 {
     private readonly ICompanyProfileRepository _profileRepository;
+    private readonly ICompanyNameNormalizer _normalizer;
 
-    public EntityResolver(ICompanyProfileRepository profileRepository)
+    public EntityResolver(ICompanyProfileRepository profileRepository, ICompanyNameNormalizer normalizer)
     {
         _profileRepository = profileRepository;
+        _normalizer = normalizer;
     }
 
     public async Task<CompanyProfile?> ResolveAsync(TraceRequestDto input, CancellationToken cancellationToken)
@@ -63,7 +63,7 @@ public sealed partial class EntityResolver : IEntityResolver
         // Fall back to name-based key
         if (!string.IsNullOrWhiteSpace(name))
         {
-            var normalized = NormalizeName(name);
+            var normalized = _normalizer.Normalize(name);
             var hash = ComputeHash(normalized);
             var countryPrefix = !string.IsNullOrWhiteSpace(country)
                 ? country.Trim().ToUpperInvariant()
@@ -75,70 +75,16 @@ public sealed partial class EntityResolver : IEntityResolver
     }
 
     /// <summary>
-    /// Normalizes a company name for deduplication:
-    /// 1. Lowercase
-    /// 2. Remove diacritics
-    /// 3. Remove legal form suffixes
-    /// 4. Remove punctuation
-    /// 5. Sort tokens alphabetically
-    /// 6. SHA256 hash
+    /// Normalizes a company name for deduplication.
+    /// Delegates to <see cref="ICompanyNameNormalizer"/> for the enhanced pipeline.
+    /// Kept as internal static convenience for backward-compatible test access via a default normalizer.
     /// </summary>
-    internal static string NormalizeName(string name)
-    {
-        var result = name.Trim().ToUpperInvariant();
-
-        // Remove diacritics
-        result = RemoveDiacritics(result);
-
-        // Remove legal forms
-        result = LegalFormPattern().Replace(result, " ");
-
-        // Remove punctuation and extra whitespace
-        result = PunctuationPattern().Replace(result, " ");
-        result = WhitespacePattern().Replace(result, " ").Trim();
-
-        // Sort tokens for order-independent matching
-        var tokens = result.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        Array.Sort(tokens, StringComparer.Ordinal);
-
-        return string.Join(" ", tokens);
-    }
-
-    private static string RemoveDiacritics(string text)
-    {
-        var normalized = text.Normalize(NormalizationForm.FormD);
-        var sb = new StringBuilder(normalized.Length);
-
-        foreach (var c in normalized)
-        {
-            if (CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark)
-                sb.Append(c);
-        }
-
-        return sb.ToString().Normalize(NormalizationForm.FormC);
-    }
+    internal static string NormalizeName(string name) =>
+        new CompanyNameNormalizer().Normalize(name);
 
     private static string ComputeHash(string input)
     {
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(input));
         return Convert.ToHexStringLower(bytes)[..16]; // First 16 hex chars (64 bits)
     }
-
-    // Common legal form patterns across countries
-    [GeneratedRegex(
-        @"\b(s\.?r\.?o\.?|a\.?s\.?|spol\.?\s*s\s*r\.?\s*o\.?|v\.?o\.?s\.?" +
-        @"|gmbh|ag|kg|ohg|ug|e\.?v\.?" +
-        @"|ltd\.?|llc|llp|plc|inc\.?|corp\.?|co\.?" +
-        @"|sa|sarl|sas|srl|spa|snc" +
-        @"|pty|nv|bv|cv" +
-        @"|ab|aps|as|oy|oyj" +
-        @"|kft|zrt|nyrt|bt)\b",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled)]
-    private static partial Regex LegalFormPattern();
-
-    [GeneratedRegex(@"[^\w\s]", RegexOptions.Compiled)]
-    private static partial Regex PunctuationPattern();
-
-    [GeneratedRegex(@"\s+", RegexOptions.Compiled)]
-    private static partial Regex WhitespacePattern();
 }
