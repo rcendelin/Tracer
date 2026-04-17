@@ -88,6 +88,21 @@ internal sealed class CompanyProfileRepository : ICompanyProfileRepository
             .ConfigureAwait(false);
     }
 
+    public async Task<IReadOnlyCollection<CompanyProfile>> ListByCountryAsync(
+        string country, int maxCount, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(country, nameof(country));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxCount, nameof(maxCount));
+
+        return await _db.CompanyProfiles
+            .AsNoTracking()
+            .Where(p => !p.IsArchived && p.Country == country)
+            .OrderByDescending(p => p.TraceCount)
+            .Take(maxCount)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     public async Task<int> CountAsync(
         string? search, string? country, double? minConfidence, double? maxConfidence,
         DateTimeOffset? validatedBefore, bool includeArchived,
