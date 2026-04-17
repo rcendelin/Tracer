@@ -72,6 +72,19 @@ public interface ICompanyProfileRepository
     Task<bool> ExistsAsync(Guid id, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Lists non-archived company profiles for a given country, capped at <paramref name="maxCount"/>.
+    /// Ordered by <c>TraceCount</c> descending so that business-important profiles are prioritised
+    /// as fuzzy-match candidates.
+    /// </summary>
+    /// <param name="country">ISO 3166-1 alpha-2 country code.</param>
+    /// <param name="maxCount">Maximum number of profiles to return. Caller is expected to cap this (e.g. ≤ 100).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<IReadOnlyCollection<CompanyProfile>> ListByCountryAsync(
+        string country,
+        int maxCount,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Counts company profiles matching the specified filters.
     /// </summary>
     Task<int> CountAsync(

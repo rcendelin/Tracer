@@ -8,19 +8,31 @@ namespace Tracer.Application.Services;
 
 /// <summary>
 /// Resolves entity identity for CKB deduplication.
-/// Matching pipeline: RegistrationId+Country → NormalizedKey → null (new profile).
+/// Matching pipeline: RegistrationId+Country → NormalizedKey → fuzzy name match → null (new profile).
 /// </summary>
 public sealed class EntityResolver : IEntityResolver
 {
+    /// <summary>Score threshold above which the top fuzzy candidate is auto-matched.</summary>
+    private const double HighConfidenceThreshold = 0.85;
+
+    /// <summary>Maximum number of CKB profiles loaded as fuzzy-match candidates per request.</summary>
+    private const int MaxFuzzyCandidates = 100;
+
     private readonly ICompanyProfileRepository _profileRepository;
     private readonly ICompanyNameNormalizer _normalizer;
+    private readonly IFuzzyNameMatcher _fuzzyMatcher;
 
-    public EntityResolver(ICompanyProfileRepository profileRepository, ICompanyNameNormalizer normalizer)
+    public EntityResolver(
+        ICompanyProfileRepository profileRepository,
+        ICompanyNameNormalizer normalizer,
+        IFuzzyNameMatcher fuzzyMatcher)
     {
         _profileRepository = profileRepository;
         _normalizer = normalizer;
+        _fuzzyMatcher = fuzzyMatcher;
     }
 
+    /// <inheritdoc />
     public async Task<CompanyProfile?> ResolveAsync(TraceRequestDto input, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(input);
@@ -41,7 +53,7 @@ public sealed class EntityResolver : IEntityResolver
                 return profile;
         }
 
-        // 2. Name-based match via NormalizedKey
+        // 2. Name-based match via NormalizedKey (exact hash)
         if (!string.IsNullOrWhiteSpace(input.CompanyName))
         {
             var nameKey = GenerateNormalizedKey(input.CompanyName, input.Country, input.RegistrationId);
@@ -50,10 +62,37 @@ public sealed class EntityResolver : IEntityResolver
                 return profile;
         }
 
-        // 3. No match — new company
+        // 3. Fuzzy name match (auto-match only at ≥ HighConfidenceThreshold)
+        var fuzzyMatch = await TryFuzzyMatchAsync(input, cancellationToken).ConfigureAwait(false);
+        if (fuzzyMatch is not null)
+            return fuzzyMatch;
+
+        // 4. No match — new company
         return null;
     }
 
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<FuzzyMatchCandidate>> FindCandidatesAsync(
+        TraceRequestDto input, int maxCandidates, double minScore, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxCandidates, nameof(maxCandidates));
+
+        // Fuzzy search requires both a company name to compare and a country to filter the candidate pool.
+        if (string.IsNullOrWhiteSpace(input.CompanyName) || string.IsNullOrWhiteSpace(input.Country))
+            return [];
+
+        var scored = await ScoreCandidatesAsync(
+            input.CompanyName!, input.Country!, cancellationToken).ConfigureAwait(false);
+
+        return scored
+            .Where(c => c.Score >= minScore)
+            .OrderByDescending(c => c.Score)
+            .Take(maxCandidates)
+            .ToList();
+    }
+
+    /// <inheritdoc />
     public string GenerateNormalizedKey(string? name, string? country, string? registrationId)
     {
         // Prefer RegistrationId-based key
@@ -81,6 +120,57 @@ public sealed class EntityResolver : IEntityResolver
     /// </summary>
     internal static string NormalizeName(string name) =>
         new CompanyNameNormalizer().Normalize(name);
+
+    // ── Fuzzy matching ───────────────────────────────────────────────────────
+
+    private async Task<CompanyProfile?> TryFuzzyMatchAsync(
+        TraceRequestDto input, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(input.CompanyName) || string.IsNullOrWhiteSpace(input.Country))
+            return null;
+
+        var scored = await ScoreCandidatesAsync(
+            input.CompanyName!, input.Country!, cancellationToken).ConfigureAwait(false);
+
+        if (scored.Count == 0)
+            return null;
+
+        var best = scored.OrderByDescending(c => c.Score).First();
+        return best.Score >= HighConfidenceThreshold ? best.Profile : null;
+    }
+
+    private async Task<List<FuzzyMatchCandidate>> ScoreCandidatesAsync(
+        string companyName, string country, CancellationToken cancellationToken)
+    {
+        var candidates = await _profileRepository
+            .ListByCountryAsync(country, MaxFuzzyCandidates, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (candidates.Count == 0)
+            return [];
+
+        // Defensive cap: the repository is expected to honour `MaxFuzzyCandidates`, but if a future
+        // regression removes that cap, we still refuse to score an unbounded set in memory (DoS guard).
+        var bounded = candidates.Count <= MaxFuzzyCandidates
+            ? candidates
+            : candidates.Take(MaxFuzzyCandidates).ToList();
+
+        var normalizedQuery = _normalizer.Normalize(companyName);
+        var scored = new List<FuzzyMatchCandidate>(bounded.Count);
+
+        foreach (var candidate in bounded)
+        {
+            var candidateName = candidate.LegalName?.Value;
+            if (string.IsNullOrWhiteSpace(candidateName))
+                continue;
+
+            var normalizedCandidate = _normalizer.Normalize(candidateName);
+            var score = _fuzzyMatcher.Score(normalizedQuery, normalizedCandidate);
+            scored.Add(new FuzzyMatchCandidate(candidate, score));
+        }
+
+        return scored;
+    }
 
     private static string ComputeHash(string input)
     {
