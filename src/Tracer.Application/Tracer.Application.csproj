@@ -2,6 +2,13 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Tracer.Application.Tests" />
+    <!-- Required so Tracer.Infrastructure can implement ILlmDisambiguatorClient (B-64). -->
+    <InternalsVisibleTo Include="Tracer.Infrastructure" />
+    <!-- Infrastructure-layer tests construct Application DTOs (DisambiguationRequest) directly. -->
+    <InternalsVisibleTo Include="Tracer.Infrastructure.Tests" />
+    <!-- Castle.DynamicProxy (used by NSubstitute) generates proxies in a separate assembly;
+         required so NSubstitute can mock internal interfaces like ILlmDisambiguatorClient. -->
+    <InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
   </ItemGroup>
 
   <ItemGroup>

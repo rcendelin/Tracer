@@ -28,6 +28,12 @@ public static class ApplicationServiceRegistration
         services.AddSingleton<IGoldenRecordMerger, GoldenRecordMerger>();
         services.AddSingleton<ICompanyNameNormalizer, CompanyNameNormalizer>();
         services.AddSingleton<IFuzzyNameMatcher, FuzzyNameMatcher>();
+
+        // LLM disambiguation (B-64) — Null client is the default so the app boots without Azure OpenAI.
+        // Infrastructure overrides this registration when Providers:AzureOpenAI:Endpoint is configured.
+        services.AddSingleton<ILlmDisambiguatorClient, NullLlmDisambiguatorClient>();
+        services.AddScoped<ILlmDisambiguator, LlmDisambiguator>();
+
         services.AddScoped<IEntityResolver, EntityResolver>();
         services.AddSingleton<IChangeDetector, ChangeDetector>();
         services.AddScoped<ICkbPersistenceService, CkbPersistenceService>();

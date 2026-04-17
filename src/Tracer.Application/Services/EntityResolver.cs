@@ -8,12 +8,19 @@ namespace Tracer.Application.Services;
 
 /// <summary>
 /// Resolves entity identity for CKB deduplication.
-/// Matching pipeline: RegistrationId+Country → NormalizedKey → fuzzy name match → null (new profile).
+/// Matching pipeline: RegistrationId+Country → NormalizedKey → fuzzy match (auto ≥ 0.85) →
+/// LLM disambiguation (0.70 ≤ score &lt; 0.85) → null (new profile).
 /// </summary>
 public sealed class EntityResolver : IEntityResolver
 {
     /// <summary>Score threshold above which the top fuzzy candidate is auto-matched.</summary>
     private const double HighConfidenceThreshold = 0.85;
+
+    /// <summary>Lower bound for mid-tier candidates escalated to LLM disambiguation (B-64).</summary>
+    private const double LowConfidenceThreshold = 0.70;
+
+    /// <summary>Maximum mid-tier candidates sent to the LLM (cost control).</summary>
+    private const int MaxLlmCandidates = 5;
 
     /// <summary>Maximum number of CKB profiles loaded as fuzzy-match candidates per request.</summary>
     private const int MaxFuzzyCandidates = 100;
@@ -21,15 +28,18 @@ public sealed class EntityResolver : IEntityResolver
     private readonly ICompanyProfileRepository _profileRepository;
     private readonly ICompanyNameNormalizer _normalizer;
     private readonly IFuzzyNameMatcher _fuzzyMatcher;
+    private readonly ILlmDisambiguator _disambiguator;
 
     public EntityResolver(
         ICompanyProfileRepository profileRepository,
         ICompanyNameNormalizer normalizer,
-        IFuzzyNameMatcher fuzzyMatcher)
+        IFuzzyNameMatcher fuzzyMatcher,
+        ILlmDisambiguator disambiguator)
     {
         _profileRepository = profileRepository;
         _normalizer = normalizer;
         _fuzzyMatcher = fuzzyMatcher;
+        _disambiguator = disambiguator;
     }
 
     /// <inheritdoc />
@@ -62,13 +72,8 @@ public sealed class EntityResolver : IEntityResolver
                 return profile;
         }
 
-        // 3. Fuzzy name match (auto-match only at ≥ HighConfidenceThreshold)
-        var fuzzyMatch = await TryFuzzyMatchAsync(input, cancellationToken).ConfigureAwait(false);
-        if (fuzzyMatch is not null)
-            return fuzzyMatch;
-
-        // 4. No match — new company
-        return null;
+        // 3. Fuzzy match (auto ≥ 0.85) → LLM disambiguation (0.70–0.85) → null
+        return await TryFuzzyOrLlmMatchAsync(input, cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -121,9 +126,14 @@ public sealed class EntityResolver : IEntityResolver
     internal static string NormalizeName(string name) =>
         new CompanyNameNormalizer().Normalize(name);
 
-    // ── Fuzzy matching ───────────────────────────────────────────────────────
+    // ── Fuzzy + LLM matching ─────────────────────────────────────────────────
 
-    private async Task<CompanyProfile?> TryFuzzyMatchAsync(
+    /// <summary>
+    /// Loads candidates by country, scores them once, and applies the two-tier match policy:
+    /// auto-match at ≥ <see cref="HighConfidenceThreshold"/>, otherwise escalate mid-tier
+    /// candidates (≥ <see cref="LowConfidenceThreshold"/>) to the LLM disambiguator.
+    /// </summary>
+    private async Task<CompanyProfile?> TryFuzzyOrLlmMatchAsync(
         TraceRequestDto input, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(input.CompanyName) || string.IsNullOrWhiteSpace(input.Country))
@@ -135,8 +145,25 @@ public sealed class EntityResolver : IEntityResolver
         if (scored.Count == 0)
             return null;
 
-        var best = scored.OrderByDescending(c => c.Score).First();
-        return best.Score >= HighConfidenceThreshold ? best.Profile : null;
+        var topByScore = scored.OrderByDescending(c => c.Score).ToList();
+
+        // Tier 1: high-confidence auto-match
+        var best = topByScore[0];
+        if (best.Score >= HighConfidenceThreshold)
+            return best.Profile;
+
+        // Tier 2: LLM disambiguation on mid-tier candidates
+        var midTier = topByScore
+            .Where(c => c.Score >= LowConfidenceThreshold && c.Score < HighConfidenceThreshold)
+            .Take(MaxLlmCandidates)
+            .ToList();
+
+        if (midTier.Count == 0)
+            return null;
+
+        return await _disambiguator
+            .PickBestMatchAsync(input.CompanyName!, input.Country, midTier, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private async Task<List<FuzzyMatchCandidate>> ScoreCandidatesAsync(
