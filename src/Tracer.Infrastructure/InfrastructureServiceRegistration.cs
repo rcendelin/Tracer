@@ -360,6 +360,35 @@ public static class InfrastructureServiceRegistration
         // Transient: thin stateless wrapper; IAiExtractorClient and IWebScraperClient are Singleton/Transient.
         services.AddTransient<IEnrichmentProvider, Providers.AiExtractor.AiExtractorProvider>();
 
+        // LLM Disambiguator (B-64) — Azure OpenAI-backed entity disambiguation for ambiguous
+        // fuzzy candidates (0.70–0.85). Overrides the NullLlmDisambiguatorClient registered by
+        // the Application layer when Providers:AzureOpenAI:Endpoint is configured.
+        // Singleton: AzureOpenAIClient is thread-safe; LlmDisambiguatorClient is stateless per call.
+        services.AddSingleton<Application.Services.ILlmDisambiguatorClient>(sp =>
+        {
+            var cfg = sp.GetRequiredService<IConfiguration>();
+            var endpoint = cfg["Providers:AzureOpenAI:Endpoint"];
+            if (string.IsNullOrWhiteSpace(endpoint))
+            {
+                return new Application.Services.NullLlmDisambiguatorClient();
+            }
+
+            var deploymentName =
+                cfg["Providers:AzureOpenAI:DisambiguatorDeploymentName"]
+                ?? cfg["Providers:AzureOpenAI:DeploymentName"]
+                ?? "gpt-4o-mini";
+            var maxTokens = int.TryParse(cfg["Providers:AzureOpenAI:DisambiguatorMaxTokens"], out var t) ? t : 500;
+
+            var apiKey = cfg["Providers:AzureOpenAI:ApiKey"];
+            var azureClient = string.IsNullOrWhiteSpace(apiKey)
+                ? new AzureOpenAIClient(new Uri(endpoint), new Azure.Identity.DefaultAzureCredential())
+                : new AzureOpenAIClient(new Uri(endpoint), new AzureKeyCredential(apiKey));
+
+            var logger = sp.GetRequiredService<ILogger<Providers.LlmDisambiguator.LlmDisambiguatorClient>>();
+            return new Providers.LlmDisambiguator.LlmDisambiguatorClient(
+                azureClient, deploymentName, maxTokens, logger);
+        });
+
         // Service Bus (optional — activated only if connection string is configured)
         services.AddSingleton<IServiceBusPublisher>(sp =>
         {

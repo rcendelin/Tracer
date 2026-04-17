@@ -14,8 +14,9 @@ public sealed class EntityResolverTests
     private readonly ICompanyProfileRepository _repo = Substitute.For<ICompanyProfileRepository>();
     private readonly ICompanyNameNormalizer _normalizer = new CompanyNameNormalizer();
     private readonly IFuzzyNameMatcher _fuzzyMatcher = new FuzzyNameMatcher();
+    private readonly ILlmDisambiguator _disambiguator = Substitute.For<ILlmDisambiguator>();
 
-    private EntityResolver CreateSut() => new(_repo, _normalizer, _fuzzyMatcher);
+    private EntityResolver CreateSut() => new(_repo, _normalizer, _fuzzyMatcher, _disambiguator);
 
     // ── Test helpers ────────────────────────────────────────────────
 
@@ -423,5 +424,113 @@ public sealed class EntityResolverTests
         var act = () => sut.FindCandidatesAsync(null!, 5, 0.70, CancellationToken.None);
 
         await act.Should().ThrowAsync<ArgumentNullException>();
+    }
+
+    // ── ResolveAsync — LLM disambiguation fallback (B-64) ───────────────────
+
+    [Fact]
+    public async Task ResolveAsync_MidTierCandidates_InvokesLlmDisambiguator()
+    {
+        // Query "Acme Holding Group" (→ tokens: ACME GROUP HOLDING) vs candidate "ACME HOLDING" (→ ACME HOLDING).
+        // Jaccard = 2/3 ≈ 0.667; JW on sorted strings is also moderate. Combined score lands in 0.70–0.85.
+        var candidate = ProfileWithName("NAME:CZ:m1", "CZ", "ACME HOLDING");
+        _repo.ListByCountryAsync("CZ", Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(new[] { candidate });
+
+        _disambiguator.PickBestMatchAsync(
+                Arg.Any<string>(), Arg.Any<string?>(),
+                Arg.Any<IReadOnlyList<FuzzyMatchCandidate>>(),
+                Arg.Any<CancellationToken>())
+            .Returns(candidate);
+
+        var sut = CreateSut();
+
+        var result = await sut.ResolveAsync(new TraceRequestDto
+        {
+            CompanyName = "Acme Holding Group",
+            Country = "CZ",
+        }, CancellationToken.None);
+
+        result.Should().Be(candidate);
+
+        await _disambiguator.Received(1).PickBestMatchAsync(
+            "Acme Holding Group", "CZ",
+            Arg.Is<IReadOnlyList<FuzzyMatchCandidate>>(list => list.Count > 0),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ResolveAsync_HighConfidenceFuzzyMatch_SkipsLlmDisambiguator()
+    {
+        // Candidate normalizes to the same tokens as the query → fuzzy score 1.0 → auto-match.
+        var exactMatch = ProfileWithName("NAME:CZ:exact", "CZ", "KOVÁŘOVA FARMA s.r.o.");
+        _repo.ListByCountryAsync("CZ", Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(new[] { exactMatch });
+
+        var sut = CreateSut();
+
+        var result = await sut.ResolveAsync(new TraceRequestDto
+        {
+            CompanyName = "Kovářova farma",
+            Country = "CZ",
+        }, CancellationToken.None);
+
+        result.Should().Be(exactMatch);
+        await _disambiguator.DidNotReceive().PickBestMatchAsync(
+            Arg.Any<string>(), Arg.Any<string?>(),
+            Arg.Any<IReadOnlyList<FuzzyMatchCandidate>>(),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ResolveAsync_NoMidTierCandidates_DoesNotInvokeLlm()
+    {
+        // Candidate is unrelated — fuzzy score will be well below 0.70.
+        var unrelated = ProfileWithName("NAME:CZ:unrelated", "CZ", "TOTALLY DIFFERENT COMPANY");
+        _repo.ListByCountryAsync("CZ", Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(new[] { unrelated });
+
+        var sut = CreateSut();
+
+        var result = await sut.ResolveAsync(new TraceRequestDto
+        {
+            CompanyName = "Acme",
+            Country = "CZ",
+        }, CancellationToken.None);
+
+        result.Should().BeNull();
+        await _disambiguator.DidNotReceive().PickBestMatchAsync(
+            Arg.Any<string>(), Arg.Any<string?>(),
+            Arg.Any<IReadOnlyList<FuzzyMatchCandidate>>(),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ResolveAsync_LlmReturnsNull_ResolveAsyncReturnsNull()
+    {
+        // Ambiguous candidate → fuzzy in 0.70–0.85 → LLM called but declines.
+        var candidate = ProfileWithName("NAME:CZ:m1", "CZ", "ACME HOLDING");
+        _repo.ListByCountryAsync("CZ", Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(new[] { candidate });
+
+        _disambiguator.PickBestMatchAsync(
+                Arg.Any<string>(), Arg.Any<string?>(),
+                Arg.Any<IReadOnlyList<FuzzyMatchCandidate>>(),
+                Arg.Any<CancellationToken>())
+            .Returns((CompanyProfile?)null);
+
+        var sut = CreateSut();
+
+        var result = await sut.ResolveAsync(new TraceRequestDto
+        {
+            CompanyName = "Acme Holding Group",
+            Country = "CZ",
+        }, CancellationToken.None);
+
+        result.Should().BeNull();
+        await _disambiguator.Received(1).PickBestMatchAsync(
+            Arg.Any<string>(), Arg.Any<string?>(),
+            Arg.Any<IReadOnlyList<FuzzyMatchCandidate>>(),
+            Arg.Any<CancellationToken>());
     }
 }
