@@ -33,4 +33,13 @@ internal sealed class ValidationRecordRepository : IValidationRecordRepository
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
     }
+
+    public async Task<int> CountSinceAsync(DateTimeOffset since, CancellationToken cancellationToken)
+    {
+        return await _db.ValidationRecords
+            .AsNoTracking()
+            .Where(v => v.ValidatedAt >= since)
+            .CountAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
 }

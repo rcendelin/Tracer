@@ -226,6 +226,7 @@ app.MapTraceEndpoints();
 app.MapProfileEndpoints();
 app.MapChangesEndpoints();
 app.MapStatsEndpoints();
+app.MapValidationEndpoints();
 app.MapHub<Tracer.Api.Hubs.TraceHub>("/hubs/trace");
 
 app.Run();

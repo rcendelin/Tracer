@@ -70,4 +70,13 @@ public interface IChangeEventRepository
         ChangeSeverity? severity = null,
         Guid? profileId = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Counts change events whose <see cref="ChangeEvent.DetectedAt"/> is greater
+    /// than or equal to <paramref name="detectedAfter"/>. Typically used to
+    /// compute "changes detected today" on the validation dashboard.
+    /// </summary>
+    /// <param name="detectedAfter">Inclusive lower bound. Typically start-of-day UTC.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<int> CountSinceAsync(DateTimeOffset detectedAfter, CancellationToken cancellationToken = default);
 }

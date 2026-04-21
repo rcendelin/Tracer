@@ -95,6 +95,15 @@ internal sealed class ChangeEventRepository : IChangeEventRepository
             .ConfigureAwait(false);
     }
 
+    public async Task<int> CountSinceAsync(DateTimeOffset detectedAfter, CancellationToken cancellationToken)
+    {
+        return await _db.ChangeEvents
+            .AsNoTracking()
+            .Where(e => e.DetectedAt >= detectedAfter)
+            .CountAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     private static IQueryable<ChangeEvent> ApplyFilters(
         IQueryable<ChangeEvent> query,
         ChangeSeverity? severity,
