@@ -141,6 +141,12 @@ public sealed class CompanyProfile : BaseEntity, IAggregateRoot
     /// <summary>
     /// Checks whether any field on this profile has exceeded its TTL and needs re-validation.
     /// </summary>
+    /// <remarks>
+    /// This domain-level baseline uses the platform defaults in
+    /// <see cref="FieldTtl.For"/>. Application code that must honour
+    /// per-environment TTL overrides (e.g. the re-validation scheduler)
+    /// should use <c>IFieldTtlPolicy</c> from the Application layer instead.
+    /// </remarks>
     public bool NeedsRevalidation()
     {
         var fieldsToCheck = new (FieldName Name, DateTimeOffset? EnrichedAt)[]
