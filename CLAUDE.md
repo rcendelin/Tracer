@@ -187,7 +187,20 @@ Events: `SourceCompleted`, `TraceCompleted`, `ChangeDetected`, `ValidationProgre
 
 - Queue `tracer-request` — inbound enrichment requests
 - Queue `tracer-response` — outbound enrichment results
-- Topic `tracer-changes` — change event notifications (default subscription: Critical + Major only)
+- Topic `tracer-changes` — change event notifications
+  - Subscription `fieldforce-changes` — SQL filter `Severity='Critical' OR Severity='Major'` (default FieldForce feed)
+  - Subscription `monitoring-changes` — implicit `1=1` TrueFilter (receives every published severity; Cosmetic is log-only and never published)
+
+**Severity → publish matrix** (authoritative — `FieldChangedNotificationHandler` + `CriticalChangeNotificationHandler`):
+
+| Severity | Service Bus | SignalR | Log | fieldforce-changes | monitoring-changes |
+|---|---|---|---|---|---|
+| Critical | ✅ (Critical handler) | ✅ | ✅ | ✅ | ✅ |
+| Major | ✅ (Field handler) | ✅ | ✅ | ✅ | ✅ |
+| Minor | ✅ (Field handler) | ❌ (UI polls) | ✅ | ❌ (filter drops) | ✅ |
+| Cosmetic | ❌ | ❌ | ✅ | — | — |
+
+Both subscriptions set `deadLetteringOnFilterEvaluationExceptions: true` so a broken rule parks the message in DLQ instead of silently dropping it. `monitoring-changes` has `maxDeliveryCount: 10` vs fieldforce's 5 to tolerate transient consumer outages.
 
 Message contracts are defined in `Tracer.Contracts` (standalone NuGet, zero external dependencies, multi-targets net8.0+net10.0). FieldForce references only this package. Application uses `global using` aliases from `Application/Messaging/TraceRequestMessage.cs`. `ContractMappingExtensions` maps between Application DTOs and Contracts types using `MapEnum<TSource,TTarget>` with `Enum.IsDefined` validation to catch enum drift at runtime.
 
@@ -302,6 +315,9 @@ Two modes: Lightweight (re-check only expired fields against primary registry) a
 - **`InternalsVisibleTo("DynamicProxyGenAssembly2")` in Tracer.Application** — Required in `Tracer.Application.csproj` so NSubstitute (via Castle.DynamicProxy) can mock `internal` interfaces like `ILlmDisambiguatorClient`. Also `InternalsVisibleTo Tracer.Infrastructure` lets the Infrastructure layer implement the internal client interface; `InternalsVisibleTo Tracer.Infrastructure.Tests` lets infra tests construct internal Application DTOs (`DisambiguationRequest`) directly. Same pattern applies to future Azure-backed services in Application.
 - **GDPR field classification (B-69)** — `FieldClassification` enum (Domain) + `IGdprPolicy` (Application, Singleton) are the single source of truth for whether a `FieldName` is personal data. **Classification map is intentionally hard-coded in `GdprPolicy.Classify()` — adding a new personal-data field is an architectural change, never a config toggle.** Currently only `FieldName.Officers` is `PersonalData`; all other fields default to `Firmographic`. `IsPersonalData(field)` and `RequiresConsent(field)` are kept as separate predicates even though they are currently equivalent, so a future legal basis (legitimate interest vs. consent) can be expressed without a breaking API change. Retention (`PersonalDataRetention`) reads from `Gdpr:PersonalDataRetentionDays`, default 1095 d (≈36 months). Options are registered via `AddOptions<GdprOptions>().Validate(...).ValidateOnStart()` so misconfig fails at boot, not at first resolve.
 - **Personal-data access audit (B-69)** — `IPersonalDataAccessAudit` (Singleton) records reads of personal-data fields for GDPR Art. 30 compliance. Default impl `LoggingPersonalDataAccessAudit` writes a structured log entry (EventId 9001) per read; suppressed when `Gdpr:AuditPersonalDataAccess=false` (dev only — production must keep auditing on). Caller must pass a non-empty `accessor` and `purpose`; guard clauses throw even when auditing is disabled so callers cannot silently pass invalid data. **Security note for B-70+:** `accessor` must be derived server-side (API key name / principal), never taken from the request body — the audit log is only as trustworthy as the caller identity feeding it. PII itself (officer names) is **never** written to the audit log — only the fact of access.
+- **Change-event topic routing (B-74)** — Two subscriptions on `tracer-changes`: `fieldforce-changes` (SQL filter `Severity='Critical' OR Severity='Major'`) and `monitoring-changes` (implicit `1=1` TrueFilter; no `$Default` override). `CriticalChangeNotificationHandler` publishes Critical; `FieldChangedNotificationHandler` publishes Major + Minor and is explicitly early-returned for Critical to avoid double-publish (both events fire for the same change — `CompanyProfile.UpdateField` raises `FieldChangedEvent` always + `CriticalChangeDetectedEvent` for Critical). Cosmetic is never published (log-only — would swamp monitoring with no business value). SignalR push is reserved for Critical + Major; Minor is polled from `/api/changes`. Severity string used for routing is `enum.ToString()` — Contracts and Domain enum member names must stay aligned (enforced by `MapEnum<,>`).
+- **Service Bus DLQ flags** — Every subscription and queue that can receive messages must set `deadLetteringOnMessageExpiration: true` AND `deadLetteringOnFilterEvaluationExceptions: true` on subscriptions. The filter-exception flag is the non-obvious one: without it a malformed SQL filter silently drops messages with no telemetry. See `deploy/bicep/modules/service-bus.bicep` — both `fieldforce-changes` and `monitoring-changes` have both flags set. `monitoring-changes` uses `maxDeliveryCount: 10` (vs 5 for fieldforce) to tolerate transient monitoring-tool outages since those consumers are internal and lower-criticality.
+- **`ChangeEventSubscriptionRoutingTests` pattern (B-74)** — Integration-style unit test that mirrors the Bicep SQL filter as a `Predicate<string>` in code and drives real handlers through a capturing `IServiceBusPublisher`. Acts as a drift detector: if either the Bicep filter or `ServiceBusPublisher.PublishChangeEventAsync` (which sets `ApplicationProperties["Severity"] = severity.ToString()`) changes, the test fails. Same pattern should apply to any future topic where routing semantics live in both infra and code — keep the test at the Application layer, not Infrastructure, so it runs on every CI build without a live Service Bus.
 
 ## Git conventions
 
