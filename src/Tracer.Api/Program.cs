@@ -61,6 +61,10 @@ builder.Services.AddScoped<Tracer.Application.Services.ITraceNotificationService
 // Application layer: MediatR, FluentValidation, Orchestrator, Scorer, Merger, Resolver, CKB persistence
 builder.Services.AddApplication();
 
+// GDPR classification and retention policy (B-69) — bound from the "Gdpr" section.
+builder.Services.Configure<Tracer.Application.Services.GdprOptions>(
+    builder.Configuration.GetSection(Tracer.Application.Services.GdprOptions.SectionName));
+
 // Infrastructure layer: DbContext, Repositories, HTTP clients, Providers
 var connectionString = builder.Configuration.GetConnectionString("TracerDb")
     ?? throw new InvalidOperationException("ConnectionStrings:TracerDb is not configured.");
