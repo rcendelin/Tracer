@@ -47,6 +47,10 @@ public static class ApplicationServiceRegistration
         services.AddSingleton<IRevalidationQueue, RevalidationQueue>();
         services.AddScoped<IRevalidationRunner, NoOpRevalidationRunner>();
 
+        // Field TTL policy (B-68) — merges Revalidation:FieldTtl overrides with
+        // platform defaults from FieldTtl.For(). Stateless, thread-safe.
+        services.AddSingleton<IFieldTtlPolicy, FieldTtlPolicy>();
+
         return services;
     }
 }

@@ -71,6 +71,36 @@ builder.Services.AddOptions<Tracer.Application.Services.GdprOptions>()
         "Gdpr:PersonalDataRetentionDays must be a positive number of days.")
     .ValidateOnStart();
 
+// Field TTL policy (B-68) — bound from "Revalidation:FieldTtl" section.
+// The section shape is a flat FieldName -> TimeSpan map, so we can't use the
+// default .Bind() helper; we read children and project into FieldTtlOptions.Overrides.
+// Unparseable values throw immediately — silent drops would produce a half-applied
+// policy that's hard to diagnose. Keys / values are validated again by ValidateOnStart
+// and once more defensively in FieldTtlPolicy's constructor.
+builder.Services.AddOptions<Tracer.Application.Services.FieldTtlOptions>()
+    .Configure<IConfiguration>((options, configuration) =>
+    {
+        var section = configuration.GetSection(Tracer.Application.Services.FieldTtlOptions.SectionName);
+        foreach (var entry in section.GetChildren())
+        {
+            if (string.IsNullOrWhiteSpace(entry.Value))
+                continue;
+
+            if (!TimeSpan.TryParse(entry.Value, System.Globalization.CultureInfo.InvariantCulture, out var ttl))
+                throw new InvalidOperationException(
+                    $"Revalidation:FieldTtl['{entry.Key}'] is not a valid TimeSpan (got '{entry.Value}').");
+
+            options.Overrides[entry.Key] = ttl;
+        }
+    })
+    .Validate(
+        o => o.Overrides.Values.All(v => v > TimeSpan.Zero),
+        "Revalidation:FieldTtl values must be strictly positive TimeSpans.")
+    .Validate(
+        o => o.Overrides.Keys.All(k => Enum.TryParse<Tracer.Domain.Enums.FieldName>(k, ignoreCase: true, out _)),
+        "Revalidation:FieldTtl keys must match Tracer.Domain.Enums.FieldName members.")
+    .ValidateOnStart();
+
 // Infrastructure layer: DbContext, Repositories, HTTP clients, Providers
 var connectionString = builder.Configuration.GetConnectionString("TracerDb")
     ?? throw new InvalidOperationException("ConnectionStrings:TracerDb is not configured.");
