@@ -62,8 +62,14 @@ builder.Services.AddScoped<Tracer.Application.Services.ITraceNotificationService
 builder.Services.AddApplication();
 
 // GDPR classification and retention policy (B-69) — bound from the "Gdpr" section.
-builder.Services.Configure<Tracer.Application.Services.GdprOptions>(
-    builder.Configuration.GetSection(Tracer.Application.Services.GdprOptions.SectionName));
+// ValidateOnStart ensures a misconfigured retention window fails at boot, not
+// at first resolve, and that the container never hands out an invalid policy.
+builder.Services.AddOptions<Tracer.Application.Services.GdprOptions>()
+    .Bind(builder.Configuration.GetSection(Tracer.Application.Services.GdprOptions.SectionName))
+    .Validate(
+        o => o.PersonalDataRetentionDays > 0,
+        "Gdpr:PersonalDataRetentionDays must be a positive number of days.")
+    .ValidateOnStart();
 
 // Infrastructure layer: DbContext, Repositories, HTTP clients, Providers
 var connectionString = builder.Configuration.GetConnectionString("TracerDb")
