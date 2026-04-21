@@ -76,6 +76,20 @@ var connectionString = builder.Configuration.GetConnectionString("TracerDb")
     ?? throw new InvalidOperationException("ConnectionStrings:TracerDb is not configured.");
 builder.Services.AddInfrastructure(connectionString);
 
+// Re-validation scheduler (B-65) — hourly BackgroundService that walks CKB for expired fields.
+// Options are always bound so the API layer (POST /revalidate) can inspect them; the
+// BackgroundService itself is only registered when Revalidation:Enabled = true.
+builder.Services.AddOptions<Tracer.Application.Services.RevalidationOptions>()
+    .Bind(builder.Configuration.GetSection(Tracer.Application.Services.RevalidationOptions.SectionName));
+
+var revalidationEnabled = builder.Configuration
+    .GetSection(Tracer.Application.Services.RevalidationOptions.SectionName)
+    .GetValue<bool?>("Enabled") ?? true;
+if (revalidationEnabled)
+{
+    builder.Services.AddHostedService<Tracer.Infrastructure.BackgroundJobs.RevalidationScheduler>();
+}
+
 // Service Bus consumer (optional — only when connection string is configured)
 var sbConnectionString = builder.Configuration.GetConnectionString("ServiceBus");
 if (!string.IsNullOrWhiteSpace(sbConnectionString))
