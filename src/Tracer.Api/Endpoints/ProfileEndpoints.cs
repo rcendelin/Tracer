@@ -5,6 +5,7 @@ using Tracer.Application.DTOs;
 using Tracer.Application.Queries.GetProfile;
 using Tracer.Application.Queries.GetProfileHistory;
 using Tracer.Application.Queries.ListProfiles;
+using Tracer.Application.Services;
 using Tracer.Domain.Interfaces;
 
 namespace Tracer.Api.Endpoints;
@@ -37,14 +38,14 @@ internal static class ProfileEndpoints
             .Produces<GetProfileHistoryResult>()
             .ProducesProblem(StatusCodes.Status404NotFound);
 
-        // Phase 3 handler: full re-validation pipeline is implemented in B-65+.
-        // The endpoint is registered here so the frontend can call it; it returns 202 Accepted
-        // with a message indicating the feature will be available in Phase 3.
+        // B-65: enqueues the profile into IRevalidationQueue, drained by RevalidationScheduler.
+        // The actual lightweight/deep pipeline is implemented in B-66/B-67.
         group.MapPost("/{profileId:guid}/revalidate", RevalidateProfileAsync)
             .WithName("RevalidateProfile")
-            .WithSummary("Trigger manual re-validation of a company profile (Phase 3)")
+            .WithSummary("Enqueue a CKB profile for immediate re-validation")
             .Produces(StatusCodes.Status202Accepted)
-            .ProducesProblem(StatusCodes.Status404NotFound);
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status429TooManyRequests);
 
         return group;
     }
@@ -90,24 +91,32 @@ internal static class ProfileEndpoints
             : TypedResults.NotFound();
     }
 
-    private static async Task<Results<Accepted<string>, NotFound>> RevalidateProfileAsync(
+    private static async Task<Results<Accepted<string>, NotFound, ProblemHttpResult>> RevalidateProfileAsync(
         Guid profileId,
         ICompanyProfileRepository repository,
+        IRevalidationQueue queue,
         CancellationToken cancellationToken)
     {
-        // Lightweight existence check — avoids loading the full profile + recent changes
-        // just to return 404. Full re-validation pipeline is Phase 3 (B-65+).
+        // Existence check avoids enqueuing phantom IDs that would later log a missing-profile
+        // warning in the scheduler.
         var exists = await repository.ExistsAsync(profileId, cancellationToken)
             .ConfigureAwait(false);
 
         if (!exists)
             return TypedResults.NotFound();
 
-        // Full re-validation pipeline is Phase 3 (B-65+). The request is accepted
-        // and will be processed once the re-validation engine is implemented.
+        var enqueued = await queue.TryEnqueueAsync(profileId, cancellationToken).ConfigureAwait(false);
+        if (!enqueued)
+        {
+            return TypedResults.Problem(
+                statusCode: StatusCodes.Status429TooManyRequests,
+                title: "Revalidation queue full",
+                detail: "The re-validation queue is at capacity. Retry in a moment.");
+        }
+
         return TypedResults.Accepted(
             (string?)null,
-            $"Re-validation for profile {profileId} queued. Full re-validation engine is available in Phase 3.");
+            $"Re-validation for profile {profileId} queued.");
     }
 
     private static async Task<Results<Ok<GetProfileHistoryResult>, NotFound>> GetProfileHistoryAsync(

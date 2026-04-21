@@ -34,6 +34,10 @@ internal sealed class TracerMetrics : ITracerMetrics, IDisposable
     private readonly Counter<long> _ckbProfilesCreated;
     private readonly Counter<long> _cacheHits;
     private readonly Counter<long> _cacheMisses;
+    private readonly Histogram<double> _revalidationDuration;
+    private readonly Counter<long> _revalidationProcessed;
+    private readonly Counter<long> _revalidationSkipped;
+    private readonly Counter<long> _revalidationFailed;
 
     public TracerMetrics()
     {
@@ -72,6 +76,23 @@ internal sealed class TracerMetrics : ITracerMetrics, IDisposable
         _cacheMisses = _meter.CreateCounter<long>(
             "tracer.cache.misses",
             description: "Number of profile cache misses (profile not in distributed cache).");
+
+        _revalidationDuration = _meter.CreateHistogram<double>(
+            "tracer.revalidation.duration",
+            unit: "ms",
+            description: "Duration of a single re-validation scheduler tick in milliseconds.");
+
+        _revalidationProcessed = _meter.CreateCounter<long>(
+            "tracer.revalidation.processed",
+            description: "Number of CKB profiles actually re-validated by the scheduler.");
+
+        _revalidationSkipped = _meter.CreateCounter<long>(
+            "tracer.revalidation.skipped",
+            description: "Number of CKB profiles that were skipped (no expired fields or runner deferred).");
+
+        _revalidationFailed = _meter.CreateCounter<long>(
+            "tracer.revalidation.failed",
+            description: "Number of re-validation passes that raised an unhandled error.");
     }
 
     /// <inheritdoc/>
@@ -107,6 +128,22 @@ internal sealed class TracerMetrics : ITracerMetrics, IDisposable
 
     /// <inheritdoc/>
     public void RecordCacheMiss() => _cacheMisses.Add(1);
+
+    /// <inheritdoc/>
+    public void RecordRevalidationRun(string trigger, int processed, int skipped, int failed, double durationMs)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(trigger);
+
+        var tags = new TagList { { "trigger", trigger } };
+        _revalidationDuration.Record(durationMs, tags);
+
+        if (processed > 0)
+            _revalidationProcessed.Add(processed, tags);
+        if (skipped > 0)
+            _revalidationSkipped.Add(skipped, tags);
+        if (failed > 0)
+            _revalidationFailed.Add(failed, tags);
+    }
 
     public void Dispose() => _meter.Dispose();
 }

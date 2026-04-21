@@ -38,6 +38,11 @@ public static class ApplicationServiceRegistration
         services.AddSingleton<IChangeDetector, ChangeDetector>();
         services.AddScoped<ICkbPersistenceService, CkbPersistenceService>();
 
+        // Re-validation (B-65) — runner is a no-op placeholder until B-66/B-67 replace it.
+        // Queue is singleton (in-memory Channel), scheduler lives in Infrastructure.
+        services.AddSingleton<IRevalidationQueue, RevalidationQueue>();
+        services.AddScoped<IRevalidationRunner, NoOpRevalidationRunner>();
+
         return services;
     }
 }
