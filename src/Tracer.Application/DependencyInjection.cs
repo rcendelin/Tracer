@@ -38,6 +38,10 @@ public static class ApplicationServiceRegistration
         services.AddSingleton<IChangeDetector, ChangeDetector>();
         services.AddScoped<ICkbPersistenceService, CkbPersistenceService>();
 
+        // GDPR classification and audit hook (B-69). Stateless, thread-safe.
+        services.AddSingleton<IGdprPolicy, GdprPolicy>();
+        services.AddSingleton<IPersonalDataAccessAudit, LoggingPersonalDataAccessAudit>();
+
         return services;
     }
 }
