@@ -23,6 +23,9 @@ using Tracer.Infrastructure.Providers.Handelsregister;
 using Tracer.Infrastructure.Providers.BrazilCnpj;
 using Tracer.Infrastructure.Providers.StateSos;
 using Tracer.Infrastructure.Providers.StateSos.Adapters;
+using Tracer.Infrastructure.Providers.LatamRegistry;
+using Tracer.Infrastructure.Providers.LatamRegistry.Adapters;
+using Tracer.Infrastructure.Providers.LatamRegistry.Providers;
 using Tracer.Infrastructure.Providers.AiExtractor;
 using Tracer.Infrastructure.Telemetry;
 using Azure;
@@ -325,6 +328,40 @@ public static class InfrastructureServiceRegistration
         });
 
         services.AddTransient<IEnrichmentProvider, StateSosProvider>();
+
+        // LATAM registry providers — Argentina (AFIP), Chile (SII), Colombia (RUES),
+        // Mexico (SAT). Shared HTTP client dispatches on CountryCode; adapters are
+        // Singletons (stateless parsers). Tier 2, Priority 200.
+        services.AddSingleton<ILatamRegistryAdapter, ArgentinaAfipAdapter>();
+        services.AddSingleton<ILatamRegistryAdapter, ChileSiiAdapter>();
+        services.AddSingleton<ILatamRegistryAdapter, ColombiaRuesAdapter>();
+        services.AddSingleton<ILatamRegistryAdapter, MexicoSatAdapter>();
+
+        services.AddHttpClient<ILatamRegistryClient, LatamRegistryClient>(client =>
+        {
+            client.Timeout = Timeout.InfiniteTimeSpan; // Polly controls all timeouts
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("Tracer/1.0 (tracer@xtuning.cz)");
+            client.DefaultRequestHeaders.Accept.ParseAdd("text/html,application/xhtml+xml;q=0.9");
+        })
+        .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+        {
+            UseCookies = true,
+            CookieContainer = new System.Net.CookieContainer(),
+            // Disabled: a 302 to an internal host would bypass SSRF IP validation.
+            AllowAutoRedirect = false,
+        })
+        .AddStandardResilienceHandler(options =>
+        {
+            options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(12);
+            options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(30);
+            // Minimum allowed by Polly validator; TotalRequestTimeout caps total cost.
+            options.Retry.MaxRetryAttempts = 1;
+        });
+
+        services.AddTransient<IEnrichmentProvider, ArgentinaAfipProvider>();
+        services.AddTransient<IEnrichmentProvider, ChileSiiProvider>();
+        services.AddTransient<IEnrichmentProvider, ColombiaRuesProvider>();
+        services.AddTransient<IEnrichmentProvider, MexicoSatProvider>();
 
         // Azure OpenAI — AI Extractor client (optional: only registered if endpoint is configured)
         // AzureOpenAIClient is Singleton: thread-safe, manages its own HTTP pipeline.
