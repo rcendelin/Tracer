@@ -1,11 +1,13 @@
 using MediatR;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Tracer.Application.DTOs;
 using Tracer.Application.Queries.GetProfile;
 using Tracer.Application.Queries.GetProfileHistory;
 using Tracer.Application.Queries.ListProfiles;
 using Tracer.Application.Services;
+using Tracer.Application.Services.Export;
 using Tracer.Domain.Interfaces;
 
 namespace Tracer.Api.Endpoints;
@@ -46,6 +48,16 @@ internal static class ProfileEndpoints
             .Produces(StatusCodes.Status202Accepted)
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status429TooManyRequests);
+
+        // B-81: Batch export. Rate-limited (10 req/min/IP) because the worst case writes
+        // up to 10 000 rows to the response body.
+        group.MapGet("/export", ExportProfilesAsync)
+            .WithName("ExportProfiles")
+            .WithSummary("Stream CKB profiles as CSV or XLSX")
+            .Produces(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status429TooManyRequests)
+            .RequireRateLimiting("export");
 
         return group;
     }
@@ -117,6 +129,91 @@ internal static class ProfileEndpoints
         return TypedResults.Accepted(
             (string?)null,
             $"Re-validation for profile {profileId} queued.");
+    }
+
+    private static async Task<IResult> ExportProfilesAsync(
+        HttpContext http,
+        ICompanyProfileExporter exporter,
+        [FromQuery] string? format,
+        [FromQuery] string? search,
+        [FromQuery] string? country,
+        [FromQuery] double? minConfidence,
+        [FromQuery] double? maxConfidence,
+        [FromQuery] DateTimeOffset? validatedBefore,
+        [FromQuery] bool includeArchived,
+        [FromQuery] int? maxRows,
+        CancellationToken cancellationToken)
+    {
+        if (!ExportFormatParser.TryParse(format, out var parsedFormat))
+        {
+            return TypedResults.Problem(
+                statusCode: StatusCodes.Status400BadRequest,
+                title: "Unsupported export format",
+                detail: "Supported values: 'csv', 'xlsx'.");
+        }
+
+        if (!string.IsNullOrEmpty(country) && country.Length != 2)
+        {
+            return TypedResults.Problem(
+                statusCode: StatusCodes.Status400BadRequest,
+                title: "Invalid country",
+                detail: "Country must be a 2-letter ISO 3166-1 alpha-2 code.");
+        }
+
+        if (minConfidence is < 0 or > 1 || maxConfidence is < 0 or > 1)
+        {
+            return TypedResults.Problem(
+                statusCode: StatusCodes.Status400BadRequest,
+                title: "Invalid confidence range",
+                detail: "Confidence values must be within [0, 1].");
+        }
+
+        if (minConfidence.HasValue && maxConfidence.HasValue && minConfidence > maxConfidence)
+        {
+            return TypedResults.Problem(
+                statusCode: StatusCodes.Status400BadRequest,
+                title: "Invalid confidence range",
+                detail: "minConfidence must be less than or equal to maxConfidence.");
+        }
+
+        if (maxRows is < 1 or > ExportLimits.MaxRows)
+        {
+            return TypedResults.Problem(
+                statusCode: StatusCodes.Status400BadRequest,
+                title: "Invalid maxRows",
+                detail: $"maxRows must be within [1, {ExportLimits.MaxRows}].");
+        }
+
+        var filter = new CompanyProfileExportFilter
+        {
+            MaxRows = ExportLimits.Clamp(maxRows),
+            Search = search,
+            Country = country?.ToUpperInvariant(),
+            MinConfidence = minConfidence,
+            MaxConfidence = maxConfidence,
+            ValidatedBefore = validatedBefore,
+            IncludeArchived = includeArchived,
+        };
+
+        var timestamp = DateTimeOffset.UtcNow.ToString("yyyyMMdd-HHmmss", System.Globalization.CultureInfo.InvariantCulture);
+        var extension = ExportFormatParser.FileExtension(parsedFormat);
+        var fileName = $"tracer-profiles-{timestamp}.{extension}";
+        http.Response.ContentType = ExportFormatParser.ContentType(parsedFormat);
+        http.Response.Headers.ContentDisposition = $"attachment; filename=\"{fileName}\"";
+
+        if (parsedFormat == ExportFormat.Csv)
+        {
+            // Disable response buffering so CSV rows flush to the client as they are written.
+            var bodyFeature = http.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpResponseBodyFeature>();
+            bodyFeature?.DisableBuffering();
+            await exporter.WriteCsvAsync(http.Response.Body, filter, cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            await exporter.WriteXlsxAsync(http.Response.Body, filter, cancellationToken).ConfigureAwait(false);
+        }
+
+        return TypedResults.Empty;
     }
 
     private static async Task<Results<Ok<GetProfileHistoryResult>, NotFound>> GetProfileHistoryAsync(

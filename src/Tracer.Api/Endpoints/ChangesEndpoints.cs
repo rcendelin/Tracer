@@ -1,9 +1,11 @@
 using MediatR;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Tracer.Application.DTOs;
 using Tracer.Application.Queries.GetChangeStats;
 using Tracer.Application.Queries.ListChanges;
+using Tracer.Application.Services.Export;
 using Tracer.Domain.Enums;
 
 namespace Tracer.Api.Endpoints;
@@ -28,6 +30,15 @@ internal static class ChangesEndpoints
             .WithName("GetChangeStats")
             .WithSummary("Get aggregated change event counts by severity")
             .Produces<ChangeStatsDto>();
+
+        // B-81: Batch export of change events (CSV / XLSX), capped at 10 000 rows.
+        group.MapGet("/export", ExportChangesAsync)
+            .WithName("ExportChanges")
+            .WithSummary("Stream change events as CSV or XLSX")
+            .Produces(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status429TooManyRequests)
+            .RequireRateLimiting("export");
 
         return group;
     }
@@ -60,5 +71,69 @@ internal static class ChangesEndpoints
         var result = await mediator.Send(new GetChangeStatsQuery(), cancellationToken)
             .ConfigureAwait(false);
         return TypedResults.Ok(result);
+    }
+
+    private static async Task<IResult> ExportChangesAsync(
+        HttpContext http,
+        IChangeEventExporter exporter,
+        [FromQuery] string? format,
+        [FromQuery] ChangeSeverity? severity,
+        [FromQuery] Guid? profileId,
+        [FromQuery] DateTimeOffset? from,
+        [FromQuery] DateTimeOffset? to,
+        [FromQuery] int? maxRows,
+        CancellationToken cancellationToken)
+    {
+        if (!ExportFormatParser.TryParse(format, out var parsedFormat))
+        {
+            return TypedResults.Problem(
+                statusCode: StatusCodes.Status400BadRequest,
+                title: "Unsupported export format",
+                detail: "Supported values: 'csv', 'xlsx'.");
+        }
+
+        if (from.HasValue && to.HasValue && from >= to)
+        {
+            return TypedResults.Problem(
+                statusCode: StatusCodes.Status400BadRequest,
+                title: "Invalid date range",
+                detail: "'from' must be strictly less than 'to'.");
+        }
+
+        if (maxRows is < 1 or > ExportLimits.MaxRows)
+        {
+            return TypedResults.Problem(
+                statusCode: StatusCodes.Status400BadRequest,
+                title: "Invalid maxRows",
+                detail: $"maxRows must be within [1, {ExportLimits.MaxRows}].");
+        }
+
+        var filter = new ChangeEventExportFilter
+        {
+            MaxRows = ExportLimits.Clamp(maxRows),
+            Severity = severity,
+            ProfileId = profileId,
+            From = from,
+            To = to,
+        };
+
+        var timestamp = DateTimeOffset.UtcNow.ToString("yyyyMMdd-HHmmss", System.Globalization.CultureInfo.InvariantCulture);
+        var extension = ExportFormatParser.FileExtension(parsedFormat);
+        var fileName = $"tracer-changes-{timestamp}.{extension}";
+        http.Response.ContentType = ExportFormatParser.ContentType(parsedFormat);
+        http.Response.Headers.ContentDisposition = $"attachment; filename=\"{fileName}\"";
+
+        if (parsedFormat == ExportFormat.Csv)
+        {
+            var bodyFeature = http.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpResponseBodyFeature>();
+            bodyFeature?.DisableBuffering();
+            await exporter.WriteCsvAsync(http.Response.Body, filter, cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            await exporter.WriteXlsxAsync(http.Response.Body, filter, cancellationToken).ConfigureAwait(false);
+        }
+
+        return TypedResults.Empty;
     }
 }
