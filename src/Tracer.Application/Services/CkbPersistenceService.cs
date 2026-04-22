@@ -52,10 +52,9 @@ public sealed partial class CkbPersistenceService : ICkbPersistenceService
 
         // 0. Un-archive if the resolver matched an archived profile (B-83).
         // Archival is a pure maintenance flag; a new trace restoring the profile
-        // restores it to the active working set. Silent — no domain event; the
+        // returns it to the active working set. Silent — no domain event; the
         // TraceCount increment below is the signal that the profile is in use again.
-        var wasArchived = profile.IsArchived;
-        if (wasArchived)
+        if (profile.IsArchived)
         {
             profile.Unarchive();
             _metrics.RecordCkbUnarchived();
