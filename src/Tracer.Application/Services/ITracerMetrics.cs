@@ -56,4 +56,17 @@ public interface ITracerMetrics
     /// of candidates returned by the repository.
     /// </summary>
     void RecordRevalidationRun(string trigger, int processed, int skipped, int failed, double durationMs);
+
+    /// <summary>
+    /// Records CKB archival activity. Called once per archival tick with the
+    /// total number of profiles transitioned from active to archived
+    /// (<c>count</c> may be zero when the CKB is in steady state).
+    /// </summary>
+    void RecordCkbArchived(int count);
+
+    /// <summary>
+    /// Records a single CKB un-archival, triggered when a new trace resolves
+    /// to a previously archived profile in <c>CkbPersistenceService</c>.
+    /// </summary>
+    void RecordCkbUnarchived();
 }

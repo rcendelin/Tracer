@@ -115,6 +115,36 @@ internal sealed class CompanyProfileRepository : ICompanyProfileRepository
         return await query.CountAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task<int> ArchiveStaleAsync(
+        DateTimeOffset enrichedBefore,
+        int maxTraceCount,
+        int batchSize,
+        CancellationToken cancellationToken)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(maxTraceCount, nameof(maxTraceCount));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(batchSize, nameof(batchSize));
+
+        // ExecuteUpdateAsync issues a single SQL UPDATE without materialising entities —
+        // no domain events are dispatched (archival is intentionally a silent maintenance
+        // operation, not a business change). Profiles with LastEnrichedAt == null are
+        // excluded: we cannot reason about age without a timestamp. Take(batchSize) caps
+        // the row count per round-trip so the transaction log stays bounded on the first
+        // run after deployment.
+        var candidates = _db.CompanyProfiles
+            .Where(p => !p.IsArchived
+                && p.TraceCount <= maxTraceCount
+                && p.LastEnrichedAt != null
+                && p.LastEnrichedAt < enrichedBefore)
+            .OrderBy(p => p.LastEnrichedAt)
+            .Take(batchSize);
+
+        return await candidates
+            .ExecuteUpdateAsync(
+                setters => setters.SetProperty(p => p.IsArchived, true),
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     private static IQueryable<CompanyProfile> ApplyFilters(
         IQueryable<CompanyProfile> query,
         string? search, string? country, double? minConfidence, double? maxConfidence,
