@@ -424,18 +424,9 @@ public static class InfrastructureServiceRegistration
     }
 
     /// <summary>
-    /// Registers Infrastructure-layer health checks (database connectivity).
+    /// Registers Infrastructure-layer health checks: the database connectivity probe
+    /// and, when <c>Cache:Provider = Redis</c>, a Redis round-trip probe (B-79).
     /// Kept here because <see cref="Persistence.TracerDbContext"/> is internal to Infrastructure.
-    /// </summary>
-    public static IHealthChecksBuilder AddInfrastructureHealthChecks(this IHealthChecksBuilder builder)
-    {
-        return builder.AddCheck<HealthChecks.DatabaseHealthCheck>("database");
-    }
-
-    /// <summary>
-    /// Registers Infrastructure-layer health checks plus the optional Redis probe (B-79).
-    /// The Redis probe is registered only when <c>Cache:Provider = Redis</c> so dev / CI
-    /// /health responses stay focused on the components actually in use.
     /// </summary>
     public static IHealthChecksBuilder AddInfrastructureHealthChecks(
         this IHealthChecksBuilder builder,
@@ -446,9 +437,7 @@ public static class InfrastructureServiceRegistration
 
         builder.AddCheck<HealthChecks.DatabaseHealthCheck>("database");
 
-        var providerRaw = configuration[$"{Caching.CacheOptions.SectionName}:Provider"];
-        if (Enum.TryParse<Caching.CacheProvider>(providerRaw, ignoreCase: true, out var provider) &&
-            provider == Caching.CacheProvider.Redis)
+        if (Caching.CacheOptions.ResolveProvider(configuration) == Caching.CacheProvider.Redis)
         {
             builder.AddCheck<HealthChecks.RedisHealthCheck>("redis");
         }

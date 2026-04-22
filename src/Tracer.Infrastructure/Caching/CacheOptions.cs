@@ -1,22 +1,32 @@
 using System.ComponentModel.DataAnnotations;
+using Microsoft.Extensions.Configuration;
 
 namespace Tracer.Infrastructure.Caching;
 
 /// <summary>
-/// Bindable cache configuration — supersedes the inline <c>CacheOptions</c>
-/// that shipped with B-40. Adds B-79 knobs for the distributed backing store
-/// (<see cref="Provider"/>, <see cref="RedisInstanceName"/>) and the startup
-/// <see cref="Warming"/> pre-population pass.
+/// Bindable cache configuration. <see cref="CacheProvider.InMemory"/> is the
+/// default so dev / CI runs work without any configuration; production opts in
+/// to Redis by setting <c>Cache:Provider = Redis</c> and supplying
+/// <c>ConnectionStrings:Redis</c>.
 /// </summary>
-/// <remarks>
-/// Registered via <c>services.AddOptions&lt;CacheOptions&gt;().BindConfiguration("Cache")</c>
-/// plus <c>ValidateOnStart()</c> so mis-configuration fails at boot, not at first
-/// cache resolve. <see cref="CacheProvider.InMemory"/> is the default so existing
-/// dev / CI setups continue to work without any configuration.
-/// </remarks>
 public sealed class CacheOptions
 {
     public const string SectionName = "Cache";
+
+    /// <summary>
+    /// Reads <c>Cache:Provider</c> from raw configuration with case-insensitive
+    /// enum parsing and a safe <see cref="CacheProvider.InMemory"/> fallback.
+    /// Used at registration time (when bound options are not yet available) to
+    /// decide which <see cref="Microsoft.Extensions.Caching.Distributed.IDistributedCache"/>
+    /// implementation to wire up.
+    /// </summary>
+    internal static CacheProvider ResolveProvider(IConfiguration configuration)
+    {
+        var raw = configuration[$"{SectionName}:Provider"];
+        return Enum.TryParse<CacheProvider>(raw, ignoreCase: true, out var parsed)
+            ? parsed
+            : CacheProvider.InMemory;
+    }
 
     /// <summary>
     /// Backing store for <see cref="Microsoft.Extensions.Caching.Distributed.IDistributedCache"/>.

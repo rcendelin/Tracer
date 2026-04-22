@@ -64,6 +64,11 @@ internal sealed class CompanyProfileConfiguration : IEntityTypeConfiguration<Com
         // SQL Server-only filtered index. Integration tests must use SQL Server Testcontainer, not SQLite.
         builder.HasIndex(e => e.LastValidatedAt)
             .HasFilter("[IsArchived] = 0");
+        // Cache warming + fuzzy candidate selection scan ordered DESC. Filtered to non-archived
+        // rows because every TraceCount-ordered query (warming, fuzzy match, list) excludes them.
+        builder.HasIndex(e => e.TraceCount)
+            .IsDescending()
+            .HasFilter("[IsArchived] = 0");
 
         // Ignore domain events collection (not persisted)
         builder.Ignore(e => e.DomainEvents);

@@ -15,8 +15,9 @@
 
   <ItemGroup Label="Caching">
     <!-- Azure Cache for Redis backing store for IDistributedCache (B-79).
-         Shipping 9.x line stays compatible with .NET 10 preview runtime. -->
-    <PackageVersion Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="9.0.4" />
+         Pinned to the same .NET 10 preview train as the rest of Microsoft.Extensions.*
+         to avoid NU1605 transitive downgrades against Caching.Abstractions 10.0.0-preview.*. -->
+    <PackageVersion Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="10.0.0-preview.4.25258.110" />
   </ItemGroup>
 
   <ItemGroup Label="Logging + Abstractions">

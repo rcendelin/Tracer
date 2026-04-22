@@ -87,7 +87,10 @@ internal sealed partial class CacheWarmingService : BackgroundService
 
     /// <summary>
     /// Performs the actual warming pass. Internal so unit tests can invoke
-    /// it without going through the BackgroundService loop.
+    /// it without going through the BackgroundService loop. Uses
+    /// <see cref="Parallel.ForEachAsync{TSource}(IEnumerable{TSource}, ParallelOptions, Func{TSource, CancellationToken, ValueTask})"/>
+    /// with bounded parallelism so a 10 000-profile warm-up is not bottle-necked
+    /// on Redis RTT (sequential awaits would be O(N × RTT) — minutes at 5 ms RTT).
     /// </summary>
     internal async Task WarmAsync(CancellationToken cancellationToken)
     {
@@ -97,7 +100,10 @@ internal sealed partial class CacheWarmingService : BackgroundService
 
         try
         {
-            #pragma warning disable CA2007 // AsyncServiceScope.DisposeAsync — ConfigureAwait would lose ServiceProvider
+            // CA2007 is suppressed project-wide on AsyncServiceScope disposal in this codebase
+            // (see DatabaseHealthCheck for the same pattern). Adding ConfigureAwait on the
+            // scope itself buys nothing because we're inside a BackgroundService context.
+            #pragma warning disable CA2007
             await using var scope = _scopeFactory.CreateAsyncScope();
             #pragma warning restore CA2007
             var repository = scope.ServiceProvider.GetRequiredService<ICompanyProfileRepository>();
@@ -109,30 +115,32 @@ internal sealed partial class CacheWarmingService : BackgroundService
 
             LogWarmStart(profiles.Count);
 
-            foreach (var profile in profiles)
+            var parallelOptions = new ParallelOptions
             {
-                if (cancellationToken.IsCancellationRequested)
-                    break;
+                MaxDegreeOfParallelism = MaxParallelWrites,
+                CancellationToken = cancellationToken,
+            };
 
+            await Parallel.ForEachAsync(profiles, parallelOptions, async (profile, ct) =>
+            {
                 try
                 {
                     var dto = profile.ToDto();
-                    await cache.SetAsync(profile.NormalizedKey, dto, cancellationToken)
-                        .ConfigureAwait(false);
-                    loaded++;
+                    await cache.SetAsync(profile.NormalizedKey, dto, ct).ConfigureAwait(false);
+                    Interlocked.Increment(ref loaded);
                 }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
                 {
                     throw;
                 }
                 #pragma warning disable CA1031 // Per-profile cache failures must not abort warming
                 catch (Exception ex)
                 {
-                    failed++;
+                    Interlocked.Increment(ref failed);
                     LogProfileWarmFailed(profile.Id, ex.GetType().Name);
                 }
                 #pragma warning restore CA1031
-            }
+            }).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -150,6 +158,10 @@ internal sealed partial class CacheWarmingService : BackgroundService
         stopwatch.Stop();
         LogWarmComplete(loaded, failed, stopwatch.ElapsedMilliseconds);
     }
+
+    // Bounded so a warming pass cannot saturate the Redis multiplexer or
+    // starve concurrent enrichment traffic during the startup window.
+    private const int MaxParallelWrites = 16;
 
     [LoggerMessage(EventId = 9100, Level = LogLevel.Information,
         Message = "Cache warming starting: {Count} profiles selected")]

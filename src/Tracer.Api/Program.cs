@@ -109,11 +109,7 @@ builder.Services.AddInfrastructure(connectionString, builder.Configuration);
 // Cache warming (B-79) — opt-in startup pre-population of the distributed cache.
 // Disabled by default; enable in production via Cache:Warming:Enabled = true once
 // Redis is provisioned and the App Service has a stable connection.
-var cacheWarmingEnabled = builder.Configuration
-    .GetSection(Tracer.Infrastructure.Caching.CacheOptions.SectionName)
-    .GetSection("Warming")
-    .GetValue<bool?>("Enabled") ?? false;
-if (cacheWarmingEnabled)
+if (builder.Configuration.GetValue<bool>("Cache:Warming:Enabled"))
 {
     builder.Services.AddHostedService<Tracer.Infrastructure.BackgroundJobs.CacheWarmingService>();
 }

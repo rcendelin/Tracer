@@ -46,8 +46,8 @@ internal static class DistributedCacheRegistration
 
         // Resolve the effective provider once at registration time. We deliberately
         // do NOT resolve IOptions<CacheOptions> here — options are not yet bound —
-        // so we read raw configuration and then trust ValidateOnStart to catch drift.
-        var provider = ParseProvider(configuration[$"{CacheOptions.SectionName}:Provider"]);
+        // so we read raw configuration and trust ValidateOnStart to catch drift.
+        var provider = CacheOptions.ResolveProvider(configuration);
 
         if (provider == CacheProvider.Redis)
         {
@@ -69,17 +69,5 @@ internal static class DistributedCacheRegistration
         }
 
         return services;
-    }
-
-    private static CacheProvider ParseProvider(string? raw)
-    {
-        if (string.IsNullOrWhiteSpace(raw))
-            return CacheProvider.InMemory;
-
-        // Trust ValidateOnStart for strict enforcement; here we fall back to the
-        // safe default on unknown input so typos do not silently brick the boot.
-        return Enum.TryParse<CacheProvider>(raw, ignoreCase: true, out var parsed)
-            ? parsed
-            : CacheProvider.InMemory;
     }
 }
