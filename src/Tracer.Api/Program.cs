@@ -215,26 +215,18 @@ app.UseHttpsRedirection();
 app.UseCors();
 app.UseSerilogRequestLogging();
 
-// OpenAPI spec + Scalar UI (B-82).
-// Spec is always available in Development; production may serve it too for integrators
-// provided the host is gated by ApiKeyAuthMiddleware (spec path itself is anonymous,
-// but publishing the URL is an integrator-facing choice tracked in `OpenApi:EnableUi`).
-// Scalar UI is mounted when either the environment is Development or `OpenApi:EnableUi`
-// is explicitly set.
+// OpenAPI spec + Scalar UI (B-82). The spec endpoint is always mapped so integrators
+// can consume the JSON contract (ApiKeyAuthMiddleware treats /openapi as anonymous).
+// The Scalar UI is extra and mounted only in Development or when OpenApi:EnableUi is true.
 var openApiOptions = app.Services.GetRequiredService<IOptions<TracerOpenApiOptions>>().Value;
+app.MapOpenApi();
 if (app.Environment.IsDevelopment() || openApiOptions.EnableUi)
 {
-    app.MapOpenApi();
     app.MapScalarApiReference(options =>
     {
         options.WithTitle(openApiOptions.Title)
             .WithOpenApiRoutePattern("/openapi/{documentName}.json");
     });
-}
-else
-{
-    // Spec endpoint only (no UI) for integrators in non-dev hosts.
-    app.MapOpenApi();
 }
 
 // API key authentication — validates X-Api-Key header. Skips /health and /openapi.
