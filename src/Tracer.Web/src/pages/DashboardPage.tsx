@@ -5,6 +5,8 @@ import { statsApi, traceApi } from '../api/client';
 import { useSignalR } from '../hooks/useSignalR';
 import { StatusBadge } from '../components/StatusBadge';
 import { ConfidenceBar } from '../components/ConfidenceBar';
+import { ChangesTrendChart } from '../components/ChangesTrendChart';
+import { CoverageByCountryTable } from '../components/CoverageByCountryTable';
 
 export function DashboardPage() {
   const queryClient = useQueryClient();
@@ -96,6 +98,16 @@ export function DashboardPage() {
             <p className="text-sm text-gray-500">View enrichment history</p>
           </div>
         </Link>
+      </div>
+
+      {/* Analytics widgets — aggregate-only, refetched on window focus */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="lg:col-span-2">
+          <ChangesTrendChart months={12} />
+        </div>
+        <div className="lg:col-span-1">
+          <CoverageByCountryTable />
+        </div>
       </div>
 
       {/* Recent traces — live feed updated via SignalR */}
