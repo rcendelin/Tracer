@@ -1,7 +1,17 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
+  <PropertyGroup>
+    <!-- B-82: XML doc file feeds summaries/param descriptions into the OpenAPI spec.
+         Kept Api-local so non-Api projects don't require XML docs on every internal helper.
+         CS1591 is suppressed because we deliberately don't annotate every private helper or
+         Program partial; public endpoints, DTOs, commands and queries carry real summaries. -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Scalar.AspNetCore" />
     <PackageReference Include="Serilog.AspNetCore" />
     <PackageReference Include="Azure.Monitor.OpenTelemetry.AspNetCore" />
   </ItemGroup>
