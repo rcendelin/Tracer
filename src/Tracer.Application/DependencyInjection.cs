@@ -3,6 +3,7 @@ using MediatR;
 using Microsoft.Extensions.DependencyInjection;
 using Tracer.Application.Behaviors;
 using Tracer.Application.Services;
+using Tracer.Application.Services.Export;
 
 namespace Tracer.Application;
 
@@ -50,6 +51,11 @@ public static class ApplicationServiceRegistration
         // Field TTL policy (B-68) — merges Revalidation:FieldTtl overrides with
         // platform defaults from FieldTtl.For(). Stateless, thread-safe.
         services.AddSingleton<IFieldTtlPolicy, FieldTtlPolicy>();
+
+        // Batch export (B-81) — scoped because implementations depend on scoped
+        // repositories (which in turn hold the scoped DbContext).
+        services.AddScoped<ICompanyProfileExporter, CompanyProfileExporter>();
+        services.AddScoped<IChangeEventExporter, ChangeEventExporter>();
 
         return services;
     }
