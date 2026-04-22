@@ -39,8 +39,16 @@ internal sealed partial class ChileSiiAdapter : ILatamRegistryAdapter
     public HttpRequestMessage BuildLookupRequest(string normalizedIdentifier)
     {
         // SII expects the RUT body and verifier as separate parameters
-        // ("rut" + "dv") on the STC endpoint.
-        var parts = normalizedIdentifier.Split('-');
+        // ("rut" + "dv") on the STC endpoint. Contract: NormalizeIdentifier is
+        // the sole producer of the canonical "digits-V" form — the dash is the
+        // invariant that lets us split safely here. Defensive guard below in
+        // case a future caller bypasses the normalization helper.
+        var parts = normalizedIdentifier.Split('-', 2);
+        if (parts.Length != 2)
+            throw new ArgumentException(
+                "Chile RUT must be in normalized 'digits-verifier' form.",
+                nameof(normalizedIdentifier));
+
         var rut = parts[0];
         var dv = parts[1];
 

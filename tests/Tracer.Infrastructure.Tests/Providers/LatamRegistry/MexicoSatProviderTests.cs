@@ -1,4 +1,3 @@
-using System.Collections.Immutable;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
@@ -25,15 +24,8 @@ public sealed class MexicoSatProviderTests
         string? country = "MX",
         string? registrationId = "WMT970714R10",
         TraceDepth depth = TraceDepth.Standard) =>
-        new()
-        {
-            Request = new Domain.Entities.TraceRequest(
-                companyName: "Walmart de Mexico", phone: null, email: null, website: null,
-                address: null, city: null, country: country,
-                registrationId: registrationId, taxId: null, industryHint: null,
-                depth: depth, callbackUrl: null, source: "test"),
-            AccumulatedFields = ImmutableHashSet<FieldName>.Empty,
-        };
+        LatamProviderTestContext.Create(country, registrationId,
+            companyName: "Walmart de Mexico", depth: depth);
 
     private static LatamRegistrySearchResult Result() => new()
     {

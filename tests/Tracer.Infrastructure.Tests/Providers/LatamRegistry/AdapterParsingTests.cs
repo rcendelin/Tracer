@@ -102,6 +102,19 @@ public sealed class AdapterParsingTests
         new ChileSiiAdapter().NormalizeIdentifier(input).Should().BeNull();
     }
 
+    [Fact]
+    public void ChileSii_BuildLookupRequest_DefensiveGuardRejectsUnnormalizedInput()
+    {
+        // Guard catches callers that bypass NormalizeIdentifier (contract breach).
+        var act = () => new ChileSiiAdapter().BuildLookupRequest("no-dash-but-chars");
+        // "no-dash-but-chars".Split('-', 2) yields 2 parts → still OK
+        act.Should().NotThrow();
+
+        var act2 = () => new ChileSiiAdapter().BuildLookupRequest("nodashatall");
+        act2.Should().Throw<ArgumentException>()
+            .WithParameterName("normalizedIdentifier");
+    }
+
     // ── Colombia (RUES) ──────────────────────────────────────────────────────
 
     [Fact]

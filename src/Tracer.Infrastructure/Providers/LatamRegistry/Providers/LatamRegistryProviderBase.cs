@@ -120,7 +120,12 @@ internal abstract class LatamRegistryProviderBase : IEnrichmentProvider
             fields[FieldName.LegalName] = result.EntityName;
 
         // Prefix with country code for CKB consistency (e.g. "AR:30500010912").
-        fields[FieldName.RegistrationId] = $"{result.CountryCode}:{result.RegistrationId}";
+        // `required` on the record guarantees non-null, but whitespace-only values
+        // would still slip through — guard explicitly so the CKB never stores a
+        // malformed "  :123" identifier if an adapter mis-parses the registry page.
+        if (!string.IsNullOrWhiteSpace(result.CountryCode)
+            && !string.IsNullOrWhiteSpace(result.RegistrationId))
+            fields[FieldName.RegistrationId] = $"{result.CountryCode}:{result.RegistrationId}";
 
         if (!string.IsNullOrWhiteSpace(result.Status))
             fields[FieldName.EntityStatus] = NormalizeStatus(result.Status);

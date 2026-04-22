@@ -1,4 +1,3 @@
-using System.Collections.Immutable;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
@@ -25,17 +24,9 @@ public sealed class ArgentinaAfipProviderTests
         string? country = "AR",
         string? registrationId = "30-50001091-2",
         string? taxId = null,
-        TraceDepth depth = TraceDepth.Standard,
-        IReadOnlySet<FieldName>? accumulated = null) =>
-        new()
-        {
-            Request = new Domain.Entities.TraceRequest(
-                companyName: "Some SA", phone: null, email: null, website: null,
-                address: null, city: null, country: country,
-                registrationId: registrationId, taxId: taxId, industryHint: null,
-                depth: depth, callbackUrl: null, source: "test"),
-            AccumulatedFields = accumulated ?? ImmutableHashSet<FieldName>.Empty,
-        };
+        TraceDepth depth = TraceDepth.Standard) =>
+        LatamProviderTestContext.Create(country, registrationId, taxId,
+            companyName: "Some SA", depth: depth);
 
     private static LatamRegistrySearchResult AcmeResult() => new()
     {
@@ -207,5 +198,27 @@ public sealed class ArgentinaAfipProviderTests
     {
         var act = () => _sut.EnrichAsync(null!, CancellationToken.None);
         await act.Should().ThrowAsync<ArgumentNullException>();
+    }
+
+    // ── Defensive mapping ───────────────────────────────────────────────────
+
+    [Fact]
+    public async Task EnrichAsync_WhitespaceRegistrationId_SkipsPrefixedField()
+    {
+        // A mis-parsed adapter could surface a whitespace-only identifier; the
+        // provider must not emit "AR: " as a CKB key — drop it instead.
+        _client.LookupAsync("AR", Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new LatamRegistrySearchResult
+            {
+                EntityName = "ACME",
+                RegistrationId = "   ",
+                CountryCode = "AR",
+            });
+
+        var result = await _sut.EnrichAsync(CreateContext(), CancellationToken.None);
+
+        result.Status.Should().Be(SourceStatus.Success);
+        result.Fields.Should().ContainKey(FieldName.LegalName);
+        result.Fields.Should().NotContainKey(FieldName.RegistrationId);
     }
 }
