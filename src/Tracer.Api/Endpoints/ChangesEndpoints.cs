@@ -22,12 +22,16 @@ internal static class ChangesEndpoints
         group.MapGet("/", ListChangesAsync)
             .WithName("ListChanges")
             .WithSummary("List change events (paged, filterable by severity and profile)")
-            .Produces<PagedResult<ChangeEventDto>>();
+            .WithDescription("Reverse-chronological feed of detected field changes. Filter by profile or severity (Critical, Major, Minor, Cosmetic).")
+            .Produces<PagedResult<ChangeEventDto>>()
+            .ProducesProblem(StatusCodes.Status401Unauthorized);
 
         group.MapGet("/stats", GetChangeStatsAsync)
             .WithName("GetChangeStats")
             .WithSummary("Get aggregated change event counts by severity")
-            .Produces<ChangeStatsDto>();
+            .WithDescription("Totals across the entire change-event history. Used by the Tracer UI change-feed header.")
+            .Produces<ChangeStatsDto>()
+            .ProducesProblem(StatusCodes.Status401Unauthorized);
 
         return group;
     }
