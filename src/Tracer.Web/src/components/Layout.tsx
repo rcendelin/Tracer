@@ -1,6 +1,9 @@
+import { useCallback, useState } from 'react';
 import { NavLink, Outlet } from 'react-router';
 import { useSignalR } from '../hooks/useSignalR';
 import { useChangeFeedLiveUpdates } from '../hooks/useChanges';
+import { useGlobalToasts } from '../hooks/useGlobalToasts';
+import { useMediaQuery } from '../hooks/useMediaQuery';
 import { ConnectionStatusBadge } from './ConnectionStatusBadge';
 
 const navItems = [
@@ -14,7 +17,7 @@ const navItems = [
 export function Layout() {
   // Initialise the shared SignalR connection at layout level so it stays
   // alive for the entire session and is available to all child pages.
-  const { connectionState, onChangeDetected } = useSignalR();
+  const { connectionState, onChangeDetected, onTraceCompleted } = useSignalR();
 
   // Invalidate change-feed query cache when a change arrives via SignalR.
   // Calling useChangeFeedLiveUpdates here (rather than in ChangeFeedPage)
@@ -22,30 +25,90 @@ export function Layout() {
   // conflicts that would cause.
   useChangeFeedLiveUpdates(onChangeDetected);
 
+  // Global toasts for TraceCompleted and Critical/Major ChangeDetected.
+  // Mounted here so the user sees a notification regardless of page.
+  useGlobalToasts({ onTraceCompleted, onChangeDetected });
+
+  const isDesktop = useMediaQuery('(min-width: 768px)');
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+
+  // Derived display flag: the mobile sidebar is never "open" on desktop
+  // layouts, and the overlay/transform classes consume this derived value
+  // rather than the raw state. This avoids a useEffect to reset state on
+  // viewport / route changes (which would trip react-hooks/set-state-in-effect).
+  const sidebarOpen = !isDesktop && mobileSidebarOpen;
+
+  const toggleSidebar = useCallback(() => setMobileSidebarOpen((v) => !v), []);
+  const closeSidebar = useCallback(() => setMobileSidebarOpen(false), []);
+
   return (
-    <div className="flex h-screen bg-gray-50">
-      {/* Sidebar */}
-      <aside className="w-64 bg-gray-900 text-white flex flex-col">
-        <div className="p-4 border-b border-gray-700">
-          <h1 className="text-xl font-bold">Tracer</h1>
-          <p className="text-xs text-gray-400 mt-1">Company Enrichment Engine</p>
+    <div className="flex min-h-screen bg-gray-50">
+      {/* Skip-link — visually hidden until focused. */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:px-3 focus:py-2 focus:bg-blue-600 focus:text-white focus:rounded focus:shadow-lg"
+      >
+        Skip to main content
+      </a>
+
+      {/* Mobile overlay — clicking it closes the sidebar. */}
+      {!isDesktop && sidebarOpen && (
+        <button
+          type="button"
+          aria-label="Close navigation menu"
+          onClick={closeSidebar}
+          className="fixed inset-0 z-30 bg-black/40 md:hidden"
+        />
+      )}
+
+      {/* Sidebar — fixed overlay on mobile, static column from md up. */}
+      <aside
+        aria-label="Primary navigation"
+        className={`
+          bg-gray-900 text-white flex flex-col
+          fixed inset-y-0 left-0 z-40 w-64 transform transition-transform duration-200 ease-in-out
+          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+          md:static md:translate-x-0 md:flex md:h-auto md:min-h-screen md:flex-shrink-0
+        `}
+      >
+        <div className="p-4 border-b border-gray-700 flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-bold">Tracer</h1>
+            <p className="text-xs text-gray-400 mt-1">Company Enrichment Engine</p>
+          </div>
+          {!isDesktop && (
+            <button
+              type="button"
+              aria-label="Close navigation menu"
+              onClick={closeSidebar}
+              className="md:hidden text-gray-400 hover:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 rounded p-1"
+            >
+              <span aria-hidden="true" className="text-lg">✕</span>
+            </button>
+          )}
         </div>
-        <nav className="flex-1 p-2">
+        <nav className="flex-1 p-2" aria-label="Main">
           {navItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
               end={item.to === '/'}
+              onClick={closeSidebar}
               className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2 rounded-lg mb-1 text-sm transition-colors ${
+                `flex items-center gap-3 px-3 py-2 rounded-lg mb-1 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                   isActive
                     ? 'bg-blue-600 text-white'
                     : 'text-gray-300 hover:bg-gray-800 hover:text-white'
                 }`
               }
             >
-              <span>{item.icon}</span>
-              <span>{item.label}</span>
+              {({ isActive }) => (
+                <>
+                  <span aria-hidden="true">{item.icon}</span>
+                  <span>{item.label}</span>
+                  {isActive && <span className="sr-only"> (current)</span>}
+                </>
+              )}
             </NavLink>
           ))}
         </nav>
@@ -56,11 +119,35 @@ export function Layout() {
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 overflow-auto">
-        <div className="p-6">
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Mobile top bar — only visible on small viewports. */}
+        {!isDesktop && (
+          <header className="md:hidden sticky top-0 z-20 bg-white border-b border-gray-200 flex items-center gap-3 px-4 py-3">
+            <button
+              type="button"
+              aria-label="Open navigation menu"
+              aria-expanded={sidebarOpen}
+              aria-controls="primary-navigation"
+              onClick={toggleSidebar}
+              className="p-1 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <span aria-hidden="true" className="text-xl">☰</span>
+            </button>
+            <span className="font-semibold text-gray-900">Tracer</span>
+            <span className="ml-auto">
+              <ConnectionStatusBadge state={connectionState} />
+            </span>
+          </header>
+        )}
+
+        <main
+          id="main-content"
+          tabIndex={-1}
+          className="flex-1 overflow-auto p-4 md:p-6 focus:outline-none"
+        >
           <Outlet />
-        </div>
-      </main>
+        </main>
+      </div>
     </div>
   );
 }

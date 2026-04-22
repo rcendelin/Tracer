@@ -26,7 +26,6 @@ export class ErrorBoundary extends Component<Props, State> {
   componentDidCatch(error: Error, info: ErrorInfo): void {
     // In dev we want the full detail in the console; in prod this is a
     // signal for future telemetry (e.g. App Insights browser SDK — TODO).
-    // eslint-disable-next-line no-console
     console.error('[ErrorBoundary]', error, info);
   }
 
