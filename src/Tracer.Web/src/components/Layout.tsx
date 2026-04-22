@@ -63,7 +63,12 @@ export function Layout() {
 
       {/* Sidebar — fixed overlay on mobile, static column from md up. */}
       <aside
+        id="primary-navigation"
         aria-label="Primary navigation"
+        // When the sidebar is off-screen on mobile it must not receive focus
+        // or be announced by AT; `inert` hides it from the tab order and
+        // accessibility tree in a single prop (React 19 / baseline browsers).
+        inert={!isDesktop && !mobileSidebarOpen}
         className={`
           bg-gray-900 text-white flex flex-col
           fixed inset-y-0 left-0 z-40 w-64 transform transition-transform duration-200 ease-in-out
@@ -102,13 +107,8 @@ export function Layout() {
                 }`
               }
             >
-              {({ isActive }) => (
-                <>
-                  <span aria-hidden="true">{item.icon}</span>
-                  <span>{item.label}</span>
-                  {isActive && <span className="sr-only"> (current)</span>}
-                </>
-              )}
+              <span aria-hidden="true">{item.icon}</span>
+              <span>{item.label}</span>
             </NavLink>
           ))}
         </nav>
