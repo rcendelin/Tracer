@@ -61,10 +61,64 @@ builder.Services.AddScoped<Tracer.Application.Services.ITraceNotificationService
 // Application layer: MediatR, FluentValidation, Orchestrator, Scorer, Merger, Resolver, CKB persistence
 builder.Services.AddApplication();
 
+// GDPR classification and retention policy (B-69) — bound from the "Gdpr" section.
+// ValidateOnStart ensures a misconfigured retention window fails at boot, not
+// at first resolve, and that the container never hands out an invalid policy.
+builder.Services.AddOptions<Tracer.Application.Services.GdprOptions>()
+    .Bind(builder.Configuration.GetSection(Tracer.Application.Services.GdprOptions.SectionName))
+    .Validate(
+        o => o.PersonalDataRetentionDays > 0,
+        "Gdpr:PersonalDataRetentionDays must be a positive number of days.")
+    .ValidateOnStart();
+
+// Field TTL policy (B-68) — bound from "Revalidation:FieldTtl" section.
+// The section shape is a flat FieldName -> TimeSpan map, so we can't use the
+// default .Bind() helper; we read children and project into FieldTtlOptions.Overrides.
+// Unparseable values throw immediately — silent drops would produce a half-applied
+// policy that's hard to diagnose. Keys / values are validated again by ValidateOnStart
+// and once more defensively in FieldTtlPolicy's constructor.
+builder.Services.AddOptions<Tracer.Application.Services.FieldTtlOptions>()
+    .Configure<IConfiguration>((options, configuration) =>
+    {
+        var section = configuration.GetSection(Tracer.Application.Services.FieldTtlOptions.SectionName);
+        foreach (var entry in section.GetChildren())
+        {
+            if (string.IsNullOrWhiteSpace(entry.Value))
+                continue;
+
+            if (!TimeSpan.TryParse(entry.Value, System.Globalization.CultureInfo.InvariantCulture, out var ttl))
+                throw new InvalidOperationException(
+                    $"Revalidation:FieldTtl['{entry.Key}'] is not a valid TimeSpan (got '{entry.Value}').");
+
+            options.Overrides[entry.Key] = ttl;
+        }
+    })
+    .Validate(
+        o => o.Overrides.Values.All(v => v > TimeSpan.Zero),
+        "Revalidation:FieldTtl values must be strictly positive TimeSpans.")
+    .Validate(
+        o => o.Overrides.Keys.All(k => Enum.TryParse<Tracer.Domain.Enums.FieldName>(k, ignoreCase: true, out _)),
+        "Revalidation:FieldTtl keys must match Tracer.Domain.Enums.FieldName members.")
+    .ValidateOnStart();
+
 // Infrastructure layer: DbContext, Repositories, HTTP clients, Providers
 var connectionString = builder.Configuration.GetConnectionString("TracerDb")
     ?? throw new InvalidOperationException("ConnectionStrings:TracerDb is not configured.");
 builder.Services.AddInfrastructure(connectionString);
+
+// Re-validation scheduler (B-65) — hourly BackgroundService that walks CKB for expired fields.
+// Options are always bound so the API layer (POST /revalidate) can inspect them; the
+// BackgroundService itself is only registered when Revalidation:Enabled = true.
+builder.Services.AddOptions<Tracer.Application.Services.RevalidationOptions>()
+    .Bind(builder.Configuration.GetSection(Tracer.Application.Services.RevalidationOptions.SectionName));
+
+var revalidationEnabled = builder.Configuration
+    .GetSection(Tracer.Application.Services.RevalidationOptions.SectionName)
+    .GetValue<bool?>("Enabled") ?? true;
+if (revalidationEnabled)
+{
+    builder.Services.AddHostedService<Tracer.Infrastructure.BackgroundJobs.RevalidationScheduler>();
+}
 
 // Service Bus consumer (optional — only when connection string is configured)
 var sbConnectionString = builder.Configuration.GetConnectionString("ServiceBus");

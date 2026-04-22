@@ -38,6 +38,19 @@ public static class ApplicationServiceRegistration
         services.AddSingleton<IChangeDetector, ChangeDetector>();
         services.AddScoped<ICkbPersistenceService, CkbPersistenceService>();
 
+        // GDPR classification and audit hook (B-69). Stateless, thread-safe.
+        services.AddSingleton<IGdprPolicy, GdprPolicy>();
+        services.AddSingleton<IPersonalDataAccessAudit, LoggingPersonalDataAccessAudit>();
+
+        // Re-validation (B-65) — runner is a no-op placeholder until B-66/B-67 replace it.
+        // Queue is singleton (in-memory Channel), scheduler lives in Infrastructure.
+        services.AddSingleton<IRevalidationQueue, RevalidationQueue>();
+        services.AddScoped<IRevalidationRunner, NoOpRevalidationRunner>();
+
+        // Field TTL policy (B-68) — merges Revalidation:FieldTtl overrides with
+        // platform defaults from FieldTtl.For(). Stateless, thread-safe.
+        services.AddSingleton<IFieldTtlPolicy, FieldTtlPolicy>();
+
         return services;
     }
 }

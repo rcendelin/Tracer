@@ -47,4 +47,13 @@ public interface ITracerMetrics
 
     /// <summary>Records a profile cache miss (profile not in distributed cache).</summary>
     void RecordCacheMiss();
+
+    /// <summary>
+    /// Records the outcome of a single <see cref="Tracer.Infrastructure.BackgroundJobs.RevalidationScheduler"/>
+    /// tick. <paramref name="trigger"/> is one of <c>"auto"</c> (scheduled tick)
+    /// or <c>"manual"</c> (queue drain). <paramref name="processed"/> +
+    /// <paramref name="skipped"/> + <paramref name="failed"/> equals the number
+    /// of candidates returned by the repository.
+    /// </summary>
+    void RecordRevalidationRun(string trigger, int processed, int skipped, int failed, double durationMs);
 }
