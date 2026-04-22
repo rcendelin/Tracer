@@ -44,7 +44,15 @@ internal sealed class TracerOpenApiDocumentTransformer(
 
         document.Info = BuildInfo(_options);
         document.Servers = BuildServers(_options);
-        document.Tags = BuildTags();
+
+        // Tags: Microsoft.OpenApi exposes the property as either `IList<OpenApiTag>` (1.x)
+        // or `ISet<OpenApiTag>` (2.x) depending on the preview shipped with ASP.NET Core.
+        // `.Add` is supported on both shapes, so we populate the existing collection
+        // in place instead of replacing it.
+        foreach (var tag in BuildTags())
+        {
+            document.Tags.Add(tag);
+        }
 
         // `OpenApiComponents` initializes `SecuritySchemes` in its constructor across the
         // Microsoft.OpenApi 1.x and 2.x preview surfaces the ASP.NET Core preview ships against,
@@ -114,18 +122,16 @@ internal sealed class TracerOpenApiDocumentTransformer(
         return servers;
     }
 
-    private static HashSet<OpenApiTag> BuildTags()
+    private static IEnumerable<OpenApiTag> BuildTags()
     {
-        var tags = new HashSet<OpenApiTag>();
         foreach (var (name, description) in TagDescriptions)
         {
-            tags.Add(new OpenApiTag
+            yield return new OpenApiTag
             {
                 Name = name,
                 Description = description,
-            });
+            };
         }
-        return tags;
     }
 
     private static OpenApiSecurityScheme BuildApiKeyScheme()
