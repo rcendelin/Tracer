@@ -166,6 +166,43 @@ builder.Services.AddHealthChecks()
 // ProblemDetails (RFC 7807)
 builder.Services.AddProblemDetails();
 
+// Security: API key options (B-87). Supports both flat string form and
+// rotation-friendly { Key, Label, ExpiresAt } object form. Validation runs
+// at startup so misconfigured keys (too short, duplicate, already-expired)
+// fail fast rather than letting anonymous traffic through.
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<
+    Microsoft.Extensions.Options.IValidateOptions<Tracer.Api.Middleware.ApiKeyOptions>,
+    Tracer.Api.Middleware.ApiKeyOptionsValidator>();
+builder.Services.AddOptions<Tracer.Api.Middleware.ApiKeyOptions>()
+    .Configure<IConfiguration>((options, configuration) =>
+    {
+        var bound = Tracer.Api.Middleware.ApiKeyOptionsBinder.Bind(configuration);
+        options.ApiKeys = bound.ApiKeys;
+    })
+    .ValidateOnStart();
+
+// Security: response header options (B-87). Default values are production-ready;
+// override via the "Security:Headers" config section if needed.
+builder.Services.AddOptions<Tracer.Api.Middleware.SecurityHeadersOptions>()
+    .Bind(builder.Configuration.GetSection(Tracer.Api.Middleware.SecurityHeadersOptions.SectionName));
+
+// HSTS — emitted by the built-in UseHsts middleware in production only.
+// The values here feed `Strict-Transport-Security: max-age=...; includeSubDomains[; preload]`.
+var securityHeadersSection = builder.Configuration.GetSection(Tracer.Api.Middleware.SecurityHeadersOptions.SectionName);
+builder.Services.Configure<Microsoft.AspNetCore.HttpsPolicy.HstsOptions>(hsts =>
+{
+    hsts.MaxAge = TimeSpan.FromSeconds(
+        securityHeadersSection.GetValue<int?>(nameof(Tracer.Api.Middleware.SecurityHeadersOptions.HstsMaxAgeSeconds))
+        ?? 63_072_000);
+    hsts.IncludeSubDomains = securityHeadersSection
+        .GetValue<bool?>(nameof(Tracer.Api.Middleware.SecurityHeadersOptions.HstsIncludeSubDomains))
+        ?? true;
+    hsts.Preload = securityHeadersSection
+        .GetValue<bool?>(nameof(Tracer.Api.Middleware.SecurityHeadersOptions.HstsPreload))
+        ?? false;
+});
+
 // Rate limiting — batch endpoint: 5 requests per minute per client IP
 builder.Services.AddRateLimiter(options =>
 {
@@ -188,7 +225,21 @@ var app = builder.Build();
 app.UseForwardedHeaders();
 app.UseExceptionHandler();
 app.UseStatusCodePages();
+
+// HSTS is production-only — adds Strict-Transport-Security with max-age,
+// includeSubDomains, and optional preload per HstsOptions. In development we
+// skip it so local HTTPS dev certs do not become permanently pinned in the
+// browser (B-87).
+if (!app.Environment.IsDevelopment())
+    app.UseHsts();
+
 app.UseHttpsRedirection();
+
+// Additional response headers (CSP, Referrer-Policy, Permissions-Policy,
+// X-Content-Type-Options, X-Frame-Options, COOP, CORP). Runs early so every
+// response — including errors from later middleware — carries the headers.
+app.UseSecurityHeaders();
+
 app.UseCors();
 app.UseSerilogRequestLogging();
 
