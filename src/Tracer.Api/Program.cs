@@ -104,7 +104,19 @@ builder.Services.AddOptions<Tracer.Application.Services.FieldTtlOptions>()
 // Infrastructure layer: DbContext, Repositories, HTTP clients, Providers
 var connectionString = builder.Configuration.GetConnectionString("TracerDb")
     ?? throw new InvalidOperationException("ConnectionStrings:TracerDb is not configured.");
-builder.Services.AddInfrastructure(connectionString);
+builder.Services.AddInfrastructure(connectionString, builder.Configuration);
+
+// Cache warming (B-79) — opt-in startup pre-population of the distributed cache.
+// Disabled by default; enable in production via Cache:Warming:Enabled = true once
+// Redis is provisioned and the App Service has a stable connection.
+var cacheWarmingEnabled = builder.Configuration
+    .GetSection(Tracer.Infrastructure.Caching.CacheOptions.SectionName)
+    .GetSection("Warming")
+    .GetValue<bool?>("Enabled") ?? false;
+if (cacheWarmingEnabled)
+{
+    builder.Services.AddHostedService<Tracer.Infrastructure.BackgroundJobs.CacheWarmingService>();
+}
 
 // Re-validation scheduler (B-65) — hourly BackgroundService that walks CKB for expired fields.
 // Options are always bound so the API layer (POST /revalidate) can inspect them; the
@@ -159,9 +171,10 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 });
 
 // Health checks — SQL connectivity probe (catches misconfigured connection strings early)
+// plus Redis probe (B-79) when Cache:Provider = Redis.
 builder.Services.AddHealthChecks()
     .AddCheck("self", () => Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy("API is running"))
-    .AddInfrastructureHealthChecks();
+    .AddInfrastructureHealthChecks(builder.Configuration);
 
 // ProblemDetails (RFC 7807)
 builder.Services.AddProblemDetails();

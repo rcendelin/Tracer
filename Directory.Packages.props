@@ -13,6 +13,12 @@
     <PackageVersion Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="10.0.0-preview.4.25258.110" />
   </ItemGroup>
 
+  <ItemGroup Label="Caching">
+    <!-- Azure Cache for Redis backing store for IDistributedCache (B-79).
+         Shipping 9.x line stays compatible with .NET 10 preview runtime. -->
+    <PackageVersion Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="9.0.4" />
+  </ItemGroup>
+
   <ItemGroup Label="Logging + Abstractions">
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0-preview.4.25258.110" />
   </ItemGroup>

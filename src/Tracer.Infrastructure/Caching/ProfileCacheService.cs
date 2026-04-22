@@ -127,14 +127,3 @@ internal sealed partial class ProfileCacheService : IProfileCacheService
     [LoggerMessage(Level = LogLevel.Warning, Message = "Cache: Error for {NormalizedKey}")]
     private partial void LogCacheError(Exception ex, string normalizedKey);
 }
-
-/// <summary>
-/// Cache configuration options.
-/// </summary>
-public sealed class CacheOptions
-{
-    public const string SectionName = "Cache";
-
-    /// <summary>Profile cache TTL. Default: 7 days.</summary>
-    public TimeSpan ProfileTtl { get; set; } = TimeSpan.FromDays(7);
-}

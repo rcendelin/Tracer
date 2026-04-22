@@ -101,9 +101,33 @@ module serviceBus 'modules/service-bus.bicep' = {
   }
 }
 
+// Azure Cache for Redis (B-79) — Basic C0, TLS-only, used by IDistributedCache.
+module redis 'modules/redis.bicep' = {
+  name: 'redis'
+  params: {
+    location: location
+    namePrefix: namePrefix
+    tags: tags
+  }
+}
+
+// Persist the Redis connection string into Key Vault as ConnectionStrings--Redis.
+// The double-dash → colon translation is performed by App Service, so the .NET app
+// reads it from configuration as ConnectionStrings:Redis. The secret value is never
+// echoed in deployment history because the source output is @secure().
+resource redisConnectionSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+  parent: existingKeyVault
+  name: 'ConnectionStrings--Redis'
+  properties: {
+    value: redis.outputs.connectionString
+    contentType: 'text/plain'
+  }
+}
+
 // Outputs — sensitive values (App Insights connection string, SQL FQDN) are NOT exported
 // to avoid exposure in deployment history. Retrieve them from Key Vault or Azure Portal.
 output apiUrl string = 'https://${appService.outputs.appServiceHostName}'
 output webUrl string = 'https://${staticWebApp.outputs.staticWebAppHostName}'
 output keyVaultUri string = keyVault.outputs.vaultUri
 output serviceBusNamespace string = serviceBus.outputs.namespaceName
+output redisCacheName string = redis.outputs.cacheName
