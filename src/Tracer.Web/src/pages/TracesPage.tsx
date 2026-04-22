@@ -6,6 +6,9 @@ import { useSignalR } from '../hooks/useSignalR';
 import { StatusBadge } from '../components/StatusBadge';
 import { ConfidenceBar } from '../components/ConfidenceBar';
 import { Pagination } from '../components/Pagination';
+import { SkeletonTable } from '../components/skeleton/Skeleton';
+import { ErrorMessage } from '../components/ErrorMessage';
+import { EmptyState } from '../components/EmptyState';
 import type { TraceStatus } from '../types';
 
 const STATUS_OPTIONS: { value: string; label: string }[] = [
@@ -29,7 +32,7 @@ export function TracesPage() {
   // Per-row live status overrides pushed from SignalR. Key = traceId.
   const [liveStatuses, setLiveStatuses] = useState<Record<string, TraceStatus>>({});
 
-  const { data, isLoading, isError, error } = useTraces({
+  const { data, isLoading, isError, error, refetch } = useTraces({
     page,
     pageSize: 20,
     status: (statusFilter || undefined) as TraceStatus | undefined,
@@ -45,7 +48,6 @@ export function TracesPage() {
 
     const unsub = onTraceCompleted((event) => {
       setLiveStatuses((prev) => ({ ...prev, [event.traceId]: event.status }));
-      // Invalidate after a short delay so the badge shows the live status first.
       timers.push(
         setTimeout(() => {
           void queryClient.invalidateQueries({ queryKey: ['traces'] });
@@ -70,102 +72,127 @@ export function TracesPage() {
     return d.toLocaleString('cs-CZ', { dateStyle: 'short', timeStyle: 'short' });
   };
 
+  const hasFilters = Boolean(search || statusFilter);
+
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
         <h2 className="text-2xl font-bold text-gray-900">Trace Requests</h2>
         <button
+          type="button"
           onClick={() => navigate('/trace/new')}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           + New Trace
         </button>
       </div>
 
       {/* Filters */}
-      <div className="flex gap-3 mb-4">
-        <input
-          type="text"
-          placeholder="Search company name or registration ID..."
-          value={search}
-          onChange={(e) => { setSearch(e.target.value); setPage(0); }}
-          className="flex-1 px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-        <select
-          value={statusFilter}
-          onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}
-          className="px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          {STATUS_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
-          ))}
-        </select>
+      <div className="flex gap-3 mb-4 flex-col sm:flex-row">
+        <label className="flex-1">
+          <span className="sr-only">Search traces</span>
+          <input
+            type="text"
+            placeholder="Search company name or registration ID..."
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(0); }}
+            className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </label>
+        <label>
+          <span className="sr-only">Filter by status</span>
+          <select
+            value={statusFilter}
+            onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}
+            className="w-full sm:w-auto px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            {STATUS_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+        </label>
       </div>
 
-      {/* Loading */}
-      {isLoading && (
-        <div className="text-center py-10 text-gray-500">Loading...</div>
-      )}
-
-      {/* Error */}
-      {isError && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 text-sm">
-          Error loading traces: {error instanceof Error ? error.message : 'Unknown error'}
+      {isError ? (
+        <ErrorMessage
+          title="Could not load traces"
+          error={error}
+          onRetry={() => void refetch()}
+        />
+      ) : isLoading ? (
+        <SkeletonTable rows={6} columns={['w-24', 'w-1/3', 'w-20', 'w-24', 'w-20']} />
+      ) : !data || data.items.length === 0 ? (
+        <div className="bg-white rounded-lg shadow">
+          <EmptyState
+            icon="🔍"
+            title={hasFilters ? 'No traces match your filters' : 'No traces yet'}
+            description={
+              hasFilters
+                ? 'Try clearing or adjusting the search and status filter.'
+                : 'Submit your first enrichment request to see results here.'
+            }
+            action={
+              hasFilters
+                ? { label: 'Clear filters', onClick: () => { setSearch(''); setStatusFilter(''); setPage(0); } }
+                : { label: '+ New Trace', to: '/trace/new' }
+            }
+          />
         </div>
-      )}
-
-      {/* Table */}
-      {data && (
+      ) : (
         <>
           <div className="bg-white rounded-lg shadow overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b">
-                <tr>
-                  <th className="text-left px-4 py-3 font-medium text-gray-500">Timestamp</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-500">Company</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-500">Status</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-500">Confidence</th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-500">Duration</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {data.items.length === 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b">
                   <tr>
-                    <td colSpan={5} className="text-center py-8 text-gray-500">
-                      No traces found
-                    </td>
+                    <th scope="col" className="text-left px-4 py-3 font-medium text-gray-500">Timestamp</th>
+                    <th scope="col" className="text-left px-4 py-3 font-medium text-gray-500">Company</th>
+                    <th scope="col" className="text-left px-4 py-3 font-medium text-gray-500">Status</th>
+                    <th scope="col" className="text-left px-4 py-3 font-medium text-gray-500">Confidence</th>
+                    <th scope="col" className="text-right px-4 py-3 font-medium text-gray-500">Duration</th>
                   </tr>
-                )}
-                {data.items.map((trace) => {
-                  const displayStatus = liveStatuses[trace.traceId] ?? trace.status;
-                  const isLive = trace.traceId in liveStatuses && liveStatuses[trace.traceId] !== trace.status;
-                  return (
-                    <tr
-                      key={trace.traceId}
-                      onClick={() => navigate(`/traces/${trace.traceId}`)}
-                      className="hover:bg-gray-50 cursor-pointer transition-colors"
-                    >
-                      <td className="px-4 py-3 text-gray-600">{formatDate(trace.createdAt)}</td>
-                      <td className="px-4 py-3 font-medium text-gray-900">
-                        {trace.company?.legalName?.value ?? '-'}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1.5">
-                          <StatusBadge status={displayStatus} />
-                          {isLive && (
-                            <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" title="Updated live" />
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3"><ConfidenceBar value={trace.overallConfidence} /></td>
-                      <td className="px-4 py-3 text-right text-gray-600">
-                        {trace.durationMs ? `${trace.durationMs}ms` : '-'}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y">
+                  {data.items.map((trace) => {
+                    const displayStatus = liveStatuses[trace.traceId] ?? trace.status;
+                    const isLive = trace.traceId in liveStatuses && liveStatuses[trace.traceId] !== trace.status;
+                    return (
+                      <tr
+                        key={trace.traceId}
+                        onClick={() => navigate(`/traces/${trace.traceId}`)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            navigate(`/traces/${trace.traceId}`);
+                          }
+                        }}
+                        tabIndex={0}
+                        role="button"
+                        aria-label={`Open trace ${trace.company?.legalName?.value ?? trace.traceId}`}
+                        className="hover:bg-gray-50 cursor-pointer transition-colors focus:outline-none focus:bg-blue-50"
+                      >
+                        <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{formatDate(trace.createdAt)}</td>
+                        <td className="px-4 py-3 font-medium text-gray-900">
+                          {trace.company?.legalName?.value ?? '-'}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-1.5">
+                            <StatusBadge status={displayStatus} />
+                            {isLive && (
+                              <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" title="Updated live" aria-label="Updated live" />
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3"><ConfidenceBar value={trace.overallConfidence} /></td>
+                        <td className="px-4 py-3 text-right text-gray-600 whitespace-nowrap">
+                          {trace.durationMs ? `${trace.durationMs}ms` : '-'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
 
           <Pagination

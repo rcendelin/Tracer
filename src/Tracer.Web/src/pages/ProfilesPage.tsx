@@ -4,6 +4,9 @@ import { useQuery } from '@tanstack/react-query';
 import { useProfiles, useStaleProfileCount } from '../hooks/useProfiles';
 import { ConfidenceBar } from '../components/ConfidenceBar';
 import { Pagination } from '../components/Pagination';
+import { SkeletonCard, SkeletonTable } from '../components/skeleton/Skeleton';
+import { ErrorMessage } from '../components/ErrorMessage';
+import { EmptyState } from '../components/EmptyState';
 import { statsApi } from '../api/client';
 
 function FreshnessBadge({ lastValidatedAt }: { lastValidatedAt?: string }) {
@@ -30,7 +33,7 @@ export function ProfilesPage() {
   const [minConfidence, setMinConfidence] = useState(0);
   const [includeArchived, setIncludeArchived] = useState(false);
 
-  const { data, isLoading, isError, error } = useProfiles({
+  const { data, isLoading, isError, error, refetch } = useProfiles({
     page,
     pageSize: 20,
     search: search || undefined,
@@ -39,13 +42,15 @@ export function ProfilesPage() {
     includeArchived,
   });
 
-  const { data: stats } = useQuery({
+  const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['dashboard-stats'],
     queryFn: () => statsApi.dashboard(),
     staleTime: 60_000,
   });
 
   const { data: staleCount } = useStaleProfileCount(90);
+
+  const hasFilters = Boolean(search || country || minConfidence > 0 || includeArchived);
 
   const resetPage = () => setPage(0);
 
@@ -62,23 +67,31 @@ export function ProfilesPage() {
       </div>
 
       {/* Stats header */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white rounded-lg shadow p-4">
-          <p className="text-sm text-gray-500">Total Profiles</p>
-          <p className="text-3xl font-bold text-gray-900 mt-1">{stats?.totalProfiles ?? '-'}</p>
+      {statsLoading ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
         </div>
-        <div className="bg-white rounded-lg shadow p-4">
-          <p className="text-sm text-gray-500">Avg Confidence</p>
-          <p className="text-3xl font-bold text-gray-900 mt-1">
-            {stats?.averageConfidence ? `${Math.round(stats.averageConfidence * 100)}%` : '-'}
-          </p>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+          <div className="bg-white rounded-lg shadow p-4">
+            <p className="text-sm text-gray-500">Total Profiles</p>
+            <p className="text-3xl font-bold text-gray-900 mt-1">{stats?.totalProfiles ?? '-'}</p>
+          </div>
+          <div className="bg-white rounded-lg shadow p-4">
+            <p className="text-sm text-gray-500">Avg Confidence</p>
+            <p className="text-3xl font-bold text-gray-900 mt-1">
+              {stats?.averageConfidence ? `${Math.round(stats.averageConfidence * 100)}%` : '-'}
+            </p>
+          </div>
+          <div className="bg-white rounded-lg shadow p-4">
+            <p className="text-sm text-gray-500">Needing Revalidation</p>
+            <p className="text-3xl font-bold text-orange-600 mt-1">{staleCount ?? '-'}</p>
+            <p className="text-xs text-gray-400 mt-1">Not validated in &gt;90 days</p>
+          </div>
         </div>
-        <div className="bg-white rounded-lg shadow p-4">
-          <p className="text-sm text-gray-500">Needing Revalidation</p>
-          <p className="text-3xl font-bold text-orange-600 mt-1">{staleCount ?? '-'}</p>
-          <p className="text-xs text-gray-400 mt-1">Not validated in &gt;90 days</p>
-        </div>
-      </div>
+      )}
 
       {/* Filters */}
       <div className="bg-white rounded-lg shadow p-4">
@@ -124,20 +137,41 @@ export function ProfilesPage() {
         </div>
       </div>
 
-      {/* Loading */}
-      {isLoading && (
-        <div className="text-center py-10 text-gray-500">Loading...</div>
-      )}
-
-      {/* Error */}
-      {isError && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 text-sm">
-          Error loading profiles: {error instanceof Error ? error.message : 'Unknown error'}
+      {isError ? (
+        <ErrorMessage
+          title="Could not load profiles"
+          error={error}
+          onRetry={() => void refetch()}
+        />
+      ) : isLoading ? (
+        <SkeletonTable rows={6} columns={['w-1/4', 'w-16', 'w-24', 'w-20', 'w-24', 'w-20', 'w-12']} />
+      ) : !data || data.items.length === 0 ? (
+        <div className="bg-white rounded-lg shadow">
+          <EmptyState
+            icon="🏢"
+            title={hasFilters ? 'No profiles match your filters' : 'No profiles yet'}
+            description={
+              hasFilters
+                ? 'Try widening the confidence range, clearing the country filter, or including archived profiles.'
+                : 'The CKB is empty. Submit a trace to start building up the knowledge base.'
+            }
+            action={
+              hasFilters
+                ? {
+                    label: 'Clear filters',
+                    onClick: () => {
+                      setSearch('');
+                      setCountry('');
+                      setMinConfidence(0);
+                      setIncludeArchived(false);
+                      resetPage();
+                    },
+                  }
+                : { label: '+ New Trace', to: '/trace/new' }
+            }
+          />
         </div>
-      )}
-
-      {/* Table */}
-      {data && (
+      ) : (
         <>
           <div className="bg-white rounded-lg shadow overflow-hidden">
             <div className="px-4 py-3 bg-gray-50 border-b">
@@ -145,58 +179,62 @@ export function ProfilesPage() {
                 {data.totalCount} profile{data.totalCount !== 1 ? 's' : ''} found
               </span>
             </div>
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b">
-                <tr>
-                  <th className="text-left px-4 py-3 font-medium text-gray-500">Legal Name</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-500">Country</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-500">Reg. ID</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-500">Confidence</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-500">Last Enriched</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-500">Freshness</th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-500">Traces</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {data.items.length === 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b">
                   <tr>
-                    <td colSpan={7} className="text-center py-8 text-gray-500">
-                      No profiles found
-                    </td>
+                    <th scope="col" className="text-left px-4 py-3 font-medium text-gray-500">Legal Name</th>
+                    <th scope="col" className="text-left px-4 py-3 font-medium text-gray-500">Country</th>
+                    <th scope="col" className="text-left px-4 py-3 font-medium text-gray-500">Reg. ID</th>
+                    <th scope="col" className="text-left px-4 py-3 font-medium text-gray-500">Confidence</th>
+                    <th scope="col" className="text-left px-4 py-3 font-medium text-gray-500">Last Enriched</th>
+                    <th scope="col" className="text-left px-4 py-3 font-medium text-gray-500">Freshness</th>
+                    <th scope="col" className="text-right px-4 py-3 font-medium text-gray-500">Traces</th>
                   </tr>
-                )}
-                {data.items.map((profile) => (
-                  <tr
-                    key={profile.id}
-                    onClick={() => navigate(`/profiles/${profile.id}`)}
-                    className="hover:bg-gray-50 cursor-pointer transition-colors"
-                  >
-                    <td className="px-4 py-3 font-medium text-gray-900">
-                      <div className="flex items-center gap-2">
-                        {profile.enriched?.legalName?.value ?? (
-                          <span className="text-gray-400 italic">Unknown</span>
-                        )}
-                        {profile.isArchived && (
-                          <span className="text-xs px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded">Archived</span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-gray-600 font-mono text-xs">{profile.country}</td>
-                    <td className="px-4 py-3 text-gray-600 font-mono text-xs">
-                      {profile.registrationId ?? '-'}
-                    </td>
-                    <td className="px-4 py-3">
-                      <ConfidenceBar value={profile.overallConfidence} />
-                    </td>
-                    <td className="px-4 py-3 text-gray-600 text-xs">{formatDate(profile.lastEnrichedAt)}</td>
-                    <td className="px-4 py-3">
-                      <FreshnessBadge lastValidatedAt={profile.lastValidatedAt} />
-                    </td>
-                    <td className="px-4 py-3 text-right text-gray-600">{profile.traceCount}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y">
+                  {data.items.map((profile) => (
+                    <tr
+                      key={profile.id}
+                      onClick={() => navigate(`/profiles/${profile.id}`)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          navigate(`/profiles/${profile.id}`);
+                        }
+                      }}
+                      tabIndex={0}
+                      role="button"
+                      aria-label={`Open profile ${profile.enriched?.legalName?.value ?? profile.normalizedKey}`}
+                      className="hover:bg-gray-50 cursor-pointer transition-colors focus:outline-none focus:bg-blue-50"
+                    >
+                      <td className="px-4 py-3 font-medium text-gray-900">
+                        <div className="flex items-center gap-2">
+                          {profile.enriched?.legalName?.value ?? (
+                            <span className="text-gray-400 italic">Unknown</span>
+                          )}
+                          {profile.isArchived && (
+                            <span className="text-xs px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded">Archived</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-gray-600 font-mono text-xs">{profile.country}</td>
+                      <td className="px-4 py-3 text-gray-600 font-mono text-xs">
+                        {profile.registrationId ?? '-'}
+                      </td>
+                      <td className="px-4 py-3">
+                        <ConfidenceBar value={profile.overallConfidence} />
+                      </td>
+                      <td className="px-4 py-3 text-gray-600 text-xs whitespace-nowrap">{formatDate(profile.lastEnrichedAt)}</td>
+                      <td className="px-4 py-3">
+                        <FreshnessBadge lastValidatedAt={profile.lastValidatedAt} />
+                      </td>
+                      <td className="px-4 py-3 text-right text-gray-600">{profile.traceCount}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
 
           <Pagination

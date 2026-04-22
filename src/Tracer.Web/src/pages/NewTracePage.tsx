@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useMutation } from '@tanstack/react-query';
 import { traceApi } from '../api/client';
+import { useToast } from '../components/toast/useToast';
+import { ErrorMessage } from '../components/ErrorMessage';
 import type { TraceRequest, TraceDepth } from '../types';
 
 const COUNTRIES = [
@@ -26,6 +28,7 @@ const DEPTH_OPTIONS: { value: TraceDepth; label: string; description: string }[]
 
 export function NewTracePage() {
   const navigate = useNavigate();
+  const toast = useToast();
   const [form, setForm] = useState<TraceRequest>({
     companyName: '',
     country: 'CZ',
@@ -35,7 +38,19 @@ export function NewTracePage() {
   const mutation = useMutation({
     mutationFn: (input: TraceRequest) => traceApi.submit(input),
     onSuccess: (result) => {
+      toast.push({
+        kind: 'info',
+        title: 'Trace submitted',
+        description: 'Enrichment is running in the background.',
+      });
       navigate(`/traces/${result.traceId}`);
+    },
+    onError: (err) => {
+      toast.push({
+        kind: 'error',
+        title: 'Could not submit trace',
+        description: err instanceof Error ? err.message : undefined,
+      });
     },
   });
 
@@ -211,18 +226,22 @@ export function NewTracePage() {
 
         {/* Submit */}
         {mutation.isError && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 text-sm">
-            {mutation.error instanceof Error ? mutation.error.message : 'Submission failed'}
-          </div>
+          <ErrorMessage title="Submission failed" error={mutation.error} />
         )}
 
         <button
           type="submit"
           disabled={!hasIdentifyingField || mutation.isPending}
-          className="w-full py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          aria-busy={mutation.isPending}
+          className="w-full py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
-          {mutation.isPending ? 'Submitting...' : 'Submit Trace Request'}
+          {mutation.isPending ? 'Submitting…' : 'Submit Trace Request'}
         </button>
+
+        <p className="sr-only" aria-live="polite">
+          {mutation.isPending ? 'Submitting trace request.' : ''}
+          {mutation.isSuccess ? 'Trace submitted successfully.' : ''}
+        </p>
 
         {!hasIdentifyingField && (
           <p className="text-sm text-amber-600 text-center">

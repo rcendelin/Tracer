@@ -5,6 +5,10 @@ import { useProfileDetail } from '../hooks/useProfileDetail';
 import { useProfileHistory } from '../hooks/useProfileHistory';
 import { ConfidenceBar } from '../components/ConfidenceBar';
 import { Pagination } from '../components/Pagination';
+import { SkeletonCard, SkeletonTable } from '../components/skeleton/Skeleton';
+import { ErrorMessage } from '../components/ErrorMessage';
+import { EmptyState } from '../components/EmptyState';
+import { useToast } from '../components/toast/useToast';
 import { profileApi } from '../api/client';
 import type { TracedField, Address, GeoCoordinate, ChangeSeverity, ChangeType, FieldName } from '../types';
 
@@ -106,27 +110,59 @@ export function ProfileDetailPage() {
   const [historyPage, setHistoryPage] = useState(0);
   const [expandedChange, setExpandedChange] = useState<string | null>(null);
 
-  const { data: detail, isLoading, isError, error } = useProfileDetail(profileId);
+  const { data: detail, isLoading, isError, error, refetch } = useProfileDetail(profileId);
   const { data: history } = useProfileHistory(profileId, historyPage);
+  const toast = useToast();
 
   const revalidateMutation = useMutation({
     mutationFn: () => profileApi.revalidate(profileId!),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['profile', profileId] });
+      toast.push({
+        kind: 'success',
+        title: 'Revalidation queued',
+        description: 'The profile will be re-checked by the background scheduler.',
+      });
+    },
+    onError: (err) => {
+      toast.push({
+        kind: 'error',
+        title: 'Revalidation request failed',
+        description: err instanceof Error ? err.message : undefined,
+      });
     },
   });
 
-  if (isLoading) return <div className="text-center py-10 text-gray-500">Loading...</div>;
-
-  if (isError) {
+  if (isLoading) {
     return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 text-sm">
-        {error instanceof Error ? error.message : 'Failed to load profile'}
+      <div className="space-y-6">
+        <SkeletonCard />
+        <SkeletonCard lines={3} />
+        <SkeletonTable rows={6} columns={['w-1/6', 'w-2/6', 'w-1/6', 'w-1/6', 'w-1/6']} />
       </div>
     );
   }
 
-  if (!detail) return <div className="text-center py-10 text-gray-500">Profile not found</div>;
+  if (isError) {
+    return (
+      <ErrorMessage
+        title="Could not load profile"
+        error={error}
+        onRetry={() => void refetch()}
+      />
+    );
+  }
+
+  if (!detail) {
+    return (
+      <EmptyState
+        icon="🏢"
+        title="Profile not found"
+        description="This profile may have been archived or the ID is incorrect."
+        action={{ label: 'Back to Profiles', to: '/profiles' }}
+      />
+    );
+  }
 
   const { profile } = detail;
   const enriched = profile.enriched;
@@ -166,18 +202,13 @@ export function ProfileDetailPage() {
         <div className="text-right space-y-2">
           <ConfidenceBar value={profile.overallConfidence} />
           <button
+            type="button"
             onClick={() => revalidateMutation.mutate()}
             disabled={revalidateMutation.isPending}
-            className="block ml-auto px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+            className="block ml-auto px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            {revalidateMutation.isPending ? 'Queuing...' : 'Revalidate Now'}
+            {revalidateMutation.isPending ? 'Queuing…' : 'Revalidate Now'}
           </button>
-          {revalidateMutation.isSuccess && (
-            <p className="text-xs text-green-600">Queued (Phase 3)</p>
-          )}
-          {revalidateMutation.isError && (
-            <p className="text-xs text-red-600">Revalidation request failed</p>
-          )}
         </div>
       </div>
 

@@ -7,6 +7,9 @@ import { StatusBadge } from '../components/StatusBadge';
 import { ConfidenceBar } from '../components/ConfidenceBar';
 import { FieldRow } from '../components/FieldRow';
 import { SourceTimeline } from '../components/SourceTimeline';
+import { SkeletonCard, SkeletonTable } from '../components/skeleton/Skeleton';
+import { ErrorMessage } from '../components/ErrorMessage';
+import { EmptyState } from '../components/EmptyState';
 import type { Address, SourceResult, TraceStatus } from '../types';
 
 function formatAddress(addr: Address): string {
@@ -25,7 +28,7 @@ interface LiveState {
 export function TraceDetailPage() {
   const { traceId } = useParams<{ traceId: string }>();
   const queryClient = useQueryClient();
-  const { data: trace, isLoading, isError, error } = useTraceDetail(traceId);
+  const { data: trace, isLoading, isError, error, refetch } = useTraceDetail(traceId);
   const { subscribeToTrace, onSourceCompleted, onTraceCompleted } = useSignalR();
 
   // Accumulate live source results pushed via SignalR while the trace is running.
@@ -93,17 +96,36 @@ export function TraceDetailPage() {
     });
   }, [traceId, onTraceCompleted, queryClient]);
 
-  if (isLoading) return <div className="text-center py-10 text-gray-500">Loading...</div>;
-
-  if (isError) {
+  if (isLoading) {
     return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 text-sm">
-        {error instanceof Error ? error.message : 'Failed to load trace'}
+      <div className="space-y-6">
+        <SkeletonCard />
+        <SkeletonCard lines={3} />
+        <SkeletonTable rows={6} columns={['w-1/6', 'w-2/6', 'w-1/6', 'w-1/6', 'w-1/6']} />
       </div>
     );
   }
 
-  if (!trace) return <div className="text-center py-10 text-gray-500">Trace not found</div>;
+  if (isError) {
+    return (
+      <ErrorMessage
+        title="Could not load trace"
+        error={error}
+        onRetry={() => void refetch()}
+      />
+    );
+  }
+
+  if (!trace) {
+    return (
+      <EmptyState
+        icon="🔍"
+        title="Trace not found"
+        description="It may have been archived, or the link you followed is incorrect."
+        action={{ label: 'Back to Traces', to: '/traces' }}
+      />
+    );
+  }
 
   const formatDate = (dateStr?: string) =>
     dateStr ? new Date(dateStr).toLocaleString('cs-CZ') : '-';
