@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useProfiles, useStaleProfileCount } from '../hooks/useProfiles';
 import { ConfidenceBar } from '../components/ConfidenceBar';
 import { Pagination } from '../components/Pagination';
-import { statsApi } from '../api/client';
+import { profileApi, statsApi, type ExportFormat } from '../api/client';
 
 function FreshnessBadge({ lastValidatedAt }: { lastValidatedAt?: string }) {
   if (!lastValidatedAt) {
@@ -29,6 +29,8 @@ export function ProfilesPage() {
   const [country, setCountry] = useState('');
   const [minConfidence, setMinConfidence] = useState(0);
   const [includeArchived, setIncludeArchived] = useState(false);
+  const [exportingFormat, setExportingFormat] = useState<ExportFormat | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const { data, isLoading, isError, error } = useProfiles({
     page,
@@ -54,12 +56,54 @@ export function ProfilesPage() {
     return new Date(dateStr).toLocaleString('cs-CZ', { dateStyle: 'short' });
   };
 
+  const handleExport = async (format: ExportFormat) => {
+    setExportingFormat(format);
+    setExportError(null);
+    try {
+      await profileApi.export(format, {
+        search: search || undefined,
+        country: country || undefined,
+        minConfidence: minConfidence > 0 ? minConfidence / 100 : undefined,
+        includeArchived,
+      });
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : 'Export failed');
+    } finally {
+      setExportingFormat(null);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold text-gray-900">Company Profiles</h2>
-        <span className="text-sm text-gray-500">CKB Directory</span>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            disabled={exportingFormat !== null}
+            onClick={() => handleExport('csv')}
+            className="px-3 py-1.5 text-sm rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-wait"
+            title="Export currently filtered profiles as CSV (up to 10 000 rows)"
+          >
+            {exportingFormat === 'csv' ? 'Exporting…' : 'Export CSV'}
+          </button>
+          <button
+            type="button"
+            disabled={exportingFormat !== null}
+            onClick={() => handleExport('xlsx')}
+            className="px-3 py-1.5 text-sm rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-wait"
+            title="Export currently filtered profiles as XLSX (up to 10 000 rows)"
+          >
+            {exportingFormat === 'xlsx' ? 'Exporting…' : 'Export XLSX'}
+          </button>
+          <span className="text-sm text-gray-500">CKB Directory</span>
+        </div>
       </div>
+      {exportError && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-red-700 text-sm">
+          Export failed: {exportError}
+        </div>
+      )}
 
       {/* Stats header */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

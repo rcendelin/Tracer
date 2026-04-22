@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router';
 import { Pagination } from '../components/Pagination';
 import { useChanges, useChangeStats } from '../hooks/useChanges';
+import { changesApi, type ExportFormat } from '../api/client';
 import type { ChangeSeverity, ChangeEvent } from '../types';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -148,6 +149,8 @@ export function ChangeFeedPage() {
   const [page, setPage] = useState(0);
   const [severityFilter, setSeverityFilter] = useState<ChangeSeverity | undefined>(undefined);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [exportingFormat, setExportingFormat] = useState<ExportFormat | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const { data: stats, isLoading: statsLoading } = useChangeStats();
   const { data: changes, isLoading, isError } = useChanges({
@@ -155,6 +158,18 @@ export function ChangeFeedPage() {
     pageSize: 20,
     severity: severityFilter,
   });
+
+  async function handleExport(format: ExportFormat) {
+    setExportingFormat(format);
+    setExportError(null);
+    try {
+      await changesApi.export(format, { severity: severityFilter });
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : 'Export failed');
+    } finally {
+      setExportingFormat(null);
+    }
+  }
 
   function toggleExpand(id: string) {
     setExpandedIds(prev => {
@@ -173,12 +188,39 @@ export function ChangeFeedPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Change Feed</h1>
-        <p className="text-sm text-gray-500 mt-1">
-          Field-level changes detected across all company profiles · updates live via SignalR
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Change Feed</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            Field-level changes detected across all company profiles · updates live via SignalR
+          </p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            disabled={exportingFormat !== null}
+            onClick={() => handleExport('csv')}
+            className="px-3 py-1.5 text-sm rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-wait"
+            title="Export current severity filter as CSV (up to 10 000 rows)"
+          >
+            {exportingFormat === 'csv' ? 'Exporting…' : 'Export CSV'}
+          </button>
+          <button
+            type="button"
+            disabled={exportingFormat !== null}
+            onClick={() => handleExport('xlsx')}
+            className="px-3 py-1.5 text-sm rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-wait"
+            title="Export current severity filter as XLSX (up to 10 000 rows)"
+          >
+            {exportingFormat === 'xlsx' ? 'Exporting…' : 'Export XLSX'}
+          </button>
+        </div>
       </div>
+      {exportError && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-red-700 text-sm">
+          Export failed: {exportError}
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">

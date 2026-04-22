@@ -68,6 +68,88 @@ export const traceApi = {
   },
 };
 
+export type ExportFormat = 'csv' | 'xlsx';
+
+/**
+ * Fetches a binary payload from an API export endpoint and triggers a browser
+ * download via a transient anchor element. Centralised so both
+ * ProfilesPage and ChangeFeedPage share the same auth / error handling.
+ *
+ * The server sets Content-Disposition with the filename; we honour it when
+ * present, otherwise we fall back to the caller-supplied default.
+ */
+export async function downloadExport(
+  path: string,
+  fallbackFileName: string,
+): Promise<void> {
+  const response = await fetch(`${BASE_URL}${path}`, {
+    method: 'GET',
+  });
+
+  if (!response.ok) {
+    const problem = await response.json().catch(() => null);
+    throw new ApiError(
+      response.status,
+      problem?.title ?? response.statusText,
+      problem,
+    );
+  }
+
+  // Prefer the server-provided filename, else use the caller fallback.
+  const disposition = response.headers.get('content-disposition') ?? '';
+  const match = /filename\s*=\s*"?([^";]+)"?/i.exec(disposition);
+  const fileName = match?.[1] ?? fallbackFileName;
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  try {
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = fileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+function buildProfileExportQuery(params: {
+  search?: string;
+  country?: string;
+  minConfidence?: number;
+  maxConfidence?: number;
+  validatedBefore?: string;
+  includeArchived?: boolean;
+  maxRows?: number;
+}): URLSearchParams {
+  const query = new URLSearchParams();
+  if (params.search) query.set('search', params.search);
+  if (params.country) query.set('country', params.country);
+  if (params.minConfidence !== undefined) query.set('minConfidence', String(params.minConfidence));
+  if (params.maxConfidence !== undefined) query.set('maxConfidence', String(params.maxConfidence));
+  if (params.validatedBefore) query.set('validatedBefore', params.validatedBefore);
+  if (params.includeArchived) query.set('includeArchived', 'true');
+  if (params.maxRows !== undefined) query.set('maxRows', String(params.maxRows));
+  return query;
+}
+
+function buildChangeExportQuery(params: {
+  severity?: ChangeSeverity;
+  profileId?: string;
+  from?: string;
+  to?: string;
+  maxRows?: number;
+}): URLSearchParams {
+  const query = new URLSearchParams();
+  if (params.severity) query.set('severity', params.severity);
+  if (params.profileId) query.set('profileId', params.profileId);
+  if (params.from) query.set('from', params.from);
+  if (params.to) query.set('to', params.to);
+  if (params.maxRows !== undefined) query.set('maxRows', String(params.maxRows));
+  return query;
+}
+
 // Profile endpoints
 export const profileApi = {
   list: (params: {
@@ -102,6 +184,28 @@ export const profileApi = {
 
   revalidate: (profileId: string) =>
     fetchApi<string>(`/profiles/${profileId}/revalidate`, { method: 'POST' }),
+
+  /**
+   * Downloads the current profiles view as CSV or XLSX. Query filters match
+   * the /api/profiles list endpoint; the server caps at 10 000 rows.
+   */
+  export: (
+    format: ExportFormat,
+    params: {
+      search?: string;
+      country?: string;
+      minConfidence?: number;
+      maxConfidence?: number;
+      validatedBefore?: string;
+      includeArchived?: boolean;
+      maxRows?: number;
+    } = {},
+  ) => {
+    const query = buildProfileExportQuery(params);
+    query.set('format', format);
+    const fallback = `tracer-profiles.${format}`;
+    return downloadExport(`/profiles/export?${query}`, fallback);
+  },
 };
 
 // Changes endpoints
@@ -121,6 +225,25 @@ export const changesApi = {
   },
 
   stats: () => fetchApi<ChangeStats>('/changes/stats'),
+
+  /**
+   * Downloads the current change feed view as CSV or XLSX.
+   */
+  export: (
+    format: ExportFormat,
+    params: {
+      severity?: ChangeSeverity;
+      profileId?: string;
+      from?: string;
+      to?: string;
+      maxRows?: number;
+    } = {},
+  ) => {
+    const query = buildChangeExportQuery(params);
+    query.set('format', format);
+    const fallback = `tracer-changes.${format}`;
+    return downloadExport(`/changes/export?${query}`, fallback);
+  },
 };
 
 // Stats endpoints
