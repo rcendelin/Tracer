@@ -95,4 +95,32 @@ public interface ICompanyProfileRepository
         DateTimeOffset? validatedBefore = null,
         bool includeArchived = false,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns per-country aggregates of non-archived profiles for coverage analytics.
+    /// Sums and sample counts are projected from the database; callers compute
+    /// averages in-memory so that null samples (missing <c>OverallConfidence</c> /
+    /// <c>LastEnrichedAt</c>) do not skew the result.
+    /// </summary>
+    /// <param name="now">Reference "now" used by the repository to compute per-row data age in days.</param>
+    /// <param name="maxCountries">Hard cap on the number of groups returned (DoS guard).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<IReadOnlyList<CoverageByCountryRow>> GetCoverageByCountryAsync(
+        DateTimeOffset now,
+        int maxCountries,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// Per-country aggregate row returned by
+/// <see cref="ICompanyProfileRepository.GetCoverageByCountryAsync"/>.
+/// </summary>
+public sealed record CoverageByCountryRow
+{
+    public required string Country { get; init; }
+    public required int ProfileCount { get; init; }
+    public required int ConfidenceSampleCount { get; init; }
+    public required double ConfidenceSum { get; init; }
+    public required int EnrichedSampleCount { get; init; }
+    public required long EnrichedSumDays { get; init; }
 }

@@ -95,6 +95,31 @@ internal sealed class ChangeEventRepository : IChangeEventRepository
             .ConfigureAwait(false);
     }
 
+    public async Task<IReadOnlyList<ChangeTrendBucketRow>> GetMonthlyTrendAsync(
+        DateTimeOffset fromInclusive,
+        DateTimeOffset toExclusive,
+        CancellationToken cancellationToken)
+    {
+        if (toExclusive <= fromInclusive)
+            return Array.Empty<ChangeTrendBucketRow>();
+
+        // SQL Server translates DateTimeOffset.Year/.Month to DATEPART; grouped COUNT
+        // runs on the (DetectedAt, Severity) working set — both columns are indexed.
+        return await _db.ChangeEvents
+            .AsNoTracking()
+            .Where(e => e.DetectedAt >= fromInclusive && e.DetectedAt < toExclusive)
+            .GroupBy(e => new { e.DetectedAt.Year, e.DetectedAt.Month, e.Severity })
+            .Select(g => new ChangeTrendBucketRow
+            {
+                Year = g.Key.Year,
+                Month = g.Key.Month,
+                Severity = g.Key.Severity,
+                Count = g.Count(),
+            })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     private static IQueryable<ChangeEvent> ApplyFilters(
         IQueryable<ChangeEvent> query,
         ChangeSeverity? severity,
