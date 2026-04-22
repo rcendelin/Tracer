@@ -4,13 +4,16 @@ using System.Threading.RateLimiting;
 using Azure.Monitor.OpenTelemetry.AspNetCore;
 using OpenTelemetry.Trace;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.Extensions.Options;
 using Serilog;
 using Tracer.Application;
 using Tracer.Api.Endpoints;
 using Tracer.Api.Middleware;
+using Tracer.Api.OpenApi;
 using Tracer.Api.Telemetry;
 using Tracer.Application.Services;
 using Tracer.Infrastructure;
+using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -44,8 +47,28 @@ var otelBuilder = builder.Services.AddOpenTelemetry()
 if (!string.IsNullOrWhiteSpace(appInsightsConnectionString))
     otelBuilder.UseAzureMonitor(options => options.ConnectionString = appInsightsConnectionString);
 
-// OpenAPI
-builder.Services.AddOpenApi();
+// OpenAPI (B-82)
+// TracerOpenApiOptions drives Info, Servers, Tag descriptions and the `X-Api-Key` security
+// scheme via TracerOpenApiDocumentTransformer. ApiKeySecurityRequirementTransformer attaches
+// the requirement to every operation except the /health + /openapi allowlist that matches
+// ApiKeyAuthMiddleware. Scalar UI mount is conditional (see below) on Development or an
+// explicit OpenApi:EnableUi opt-in.
+builder.Services.AddOptions<TracerOpenApiOptions>()
+    .Bind(builder.Configuration.GetSection(TracerOpenApiOptions.SectionName))
+    .ValidateDataAnnotations()
+    .Validate(
+        o => o.ServerUrls.All(url => Uri.TryCreate(url, UriKind.Absolute, out _)),
+        "OpenApi:ServerUrls must all be absolute URIs.")
+    .ValidateOnStart();
+
+builder.Services.AddSingleton<TracerOpenApiDocumentTransformer>();
+builder.Services.AddSingleton<ApiKeySecurityRequirementTransformer>();
+
+builder.Services.AddOpenApi(options =>
+{
+    options.AddDocumentTransformer<TracerOpenApiDocumentTransformer>();
+    options.AddOperationTransformer<ApiKeySecurityRequirementTransformer>();
+});
 
 // Global JSON options: serialize enums as strings so the frontend receives
 // "LegalName" instead of 0, "Critical" instead of 1, etc.
@@ -192,8 +215,25 @@ app.UseHttpsRedirection();
 app.UseCors();
 app.UseSerilogRequestLogging();
 
-if (app.Environment.IsDevelopment())
+// OpenAPI spec + Scalar UI (B-82).
+// Spec is always available in Development; production may serve it too for integrators
+// provided the host is gated by ApiKeyAuthMiddleware (spec path itself is anonymous,
+// but publishing the URL is an integrator-facing choice tracked in `OpenApi:EnableUi`).
+// Scalar UI is mounted when either the environment is Development or `OpenApi:EnableUi`
+// is explicitly set.
+var openApiOptions = app.Services.GetRequiredService<IOptions<TracerOpenApiOptions>>().Value;
+if (app.Environment.IsDevelopment() || openApiOptions.EnableUi)
 {
+    app.MapOpenApi();
+    app.MapScalarApiReference(options =>
+    {
+        options.WithTitle(openApiOptions.Title)
+            .WithOpenApiRoutePattern("/openapi/{documentName}.json");
+    });
+}
+else
+{
+    // Spec endpoint only (no UI) for integrators in non-dev hosts.
     app.MapOpenApi();
 }
 
