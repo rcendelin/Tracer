@@ -204,10 +204,9 @@ public sealed class OpenApiDocumentTests
     [Fact]
     public async Task ScalarUi_IsNotMounted_WhenEnableUiFalseInProductionLikeHost()
     {
-        // Disable EnableUi; WebApplicationFactory defaults to Development environment,
-        // so the factory is in dev mode — Scalar is still mounted (dev pass-through).
-        // The UI gating behaviour is therefore asserted only via the dev override path;
-        // a production-mode run is covered by forcing the environment name below.
+        // Production + EnableUi=false: Scalar must not be mounted. We authenticate the
+        // request so that ApiKeyAuthMiddleware doesn't short-circuit with 401 before
+        // routing gets a chance to return 404 for the missing Scalar route.
         using var factory = new WebApplicationFactory<Program>()
             .WithWebHostBuilder(builder =>
             {
@@ -231,6 +230,7 @@ public sealed class OpenApiDocumentTests
             });
 
         using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Api-Key", TestApiKey);
         using var response = await client.GetAsync(new Uri("/scalar/v1", UriKind.Relative))
             .ConfigureAwait(true);
 
