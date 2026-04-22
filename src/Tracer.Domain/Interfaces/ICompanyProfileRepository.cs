@@ -95,4 +95,25 @@ public interface ICompanyProfileRepository
         DateTimeOffset? validatedBefore = null,
         bool includeArchived = false,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Streams up to <paramref name="maxRows"/> profiles matching the specified filters,
+    /// ordered by <c>TraceCount DESC, CreatedAt DESC</c>. Intended for batch export
+    /// (B-81) — caller is responsible for enforcing the absolute row cap.
+    /// </summary>
+    /// <remarks>
+    /// Implementations must use <c>AsNoTracking()</c> and SQL-side <c>Take(maxRows)</c>
+    /// so rows are streamed from the reader rather than materialised to a list.
+    /// The returned enumerable MUST be consumed within the same DbContext scope.
+    /// </remarks>
+    /// <param name="maxRows">Absolute row cap (1 ≤ maxRows ≤ 10_000).</param>
+    IAsyncEnumerable<CompanyProfile> StreamAsync(
+        int maxRows,
+        string? search = null,
+        string? country = null,
+        double? minConfidence = null,
+        double? maxConfidence = null,
+        DateTimeOffset? validatedBefore = null,
+        bool includeArchived = false,
+        CancellationToken cancellationToken = default);
 }

@@ -115,6 +115,25 @@ internal sealed class CompanyProfileRepository : ICompanyProfileRepository
         return await query.CountAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    public IAsyncEnumerable<CompanyProfile> StreamAsync(
+        int maxRows,
+        string? search, string? country, double? minConfidence, double? maxConfidence,
+        DateTimeOffset? validatedBefore, bool includeArchived,
+        CancellationToken cancellationToken)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxRows);
+
+        var query = ApplyFilters(
+            _db.CompanyProfiles.AsNoTracking(),
+            search, country, minConfidence, maxConfidence, validatedBefore, includeArchived);
+
+        return query
+            .OrderByDescending(p => p.TraceCount)
+            .ThenByDescending(p => p.CreatedAt)
+            .Take(maxRows)
+            .AsAsyncEnumerable();
+    }
+
     private static IQueryable<CompanyProfile> ApplyFilters(
         IQueryable<CompanyProfile> query,
         string? search, string? country, double? minConfidence, double? maxConfidence,

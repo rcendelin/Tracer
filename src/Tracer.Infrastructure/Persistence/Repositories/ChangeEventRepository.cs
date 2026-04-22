@@ -95,6 +95,28 @@ internal sealed class ChangeEventRepository : IChangeEventRepository
             .ConfigureAwait(false);
     }
 
+    public IAsyncEnumerable<ChangeEvent> StreamAsync(
+        int maxRows,
+        ChangeSeverity? severity,
+        Guid? profileId,
+        DateTimeOffset? from,
+        DateTimeOffset? to,
+        CancellationToken cancellationToken)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxRows);
+
+        var query = ApplyFilters(_db.ChangeEvents.AsNoTracking(), severity, profileId);
+        if (from.HasValue)
+            query = query.Where(e => e.DetectedAt >= from.Value);
+        if (to.HasValue)
+            query = query.Where(e => e.DetectedAt < to.Value);
+
+        return query
+            .OrderByDescending(e => e.DetectedAt)
+            .Take(maxRows)
+            .AsAsyncEnumerable();
+    }
+
     private static IQueryable<ChangeEvent> ApplyFilters(
         IQueryable<ChangeEvent> query,
         ChangeSeverity? severity,
