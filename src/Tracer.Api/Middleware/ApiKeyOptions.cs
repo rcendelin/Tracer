@@ -19,9 +19,11 @@ internal sealed class ApiKeyOptions
 
     /// <summary>
     /// Parsed API key entries. Populated by <see cref="ApiKeyOptionsBinder"/>
-    /// which understands both string and object forms.
+    /// which understands both string and object forms. The setter is
+    /// <c>set</c> rather than <c>init</c> because <c>IConfigureOptions&lt;T&gt;</c>
+    /// assigns it after construction.
     /// </summary>
-    public IReadOnlyList<ApiKeyEntry> ApiKeys { get; init; } = [];
+    public IReadOnlyList<ApiKeyEntry> ApiKeys { get; set; } = [];
 }
 
 /// <summary>

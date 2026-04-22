@@ -105,9 +105,9 @@ internal sealed class ApiKeyAuthMiddleware
     }
 
     /// <summary>
-    /// Finds a non-expired entry matching the presented key using ordinal
-    /// comparison. Returns <c>null</c> if no entry matches or the match has
-    /// expired.
+    /// Finds a non-expired entry matching the presented key using a
+    /// constant-time byte comparison. Length-only short-circuit is
+    /// intentional: configured key lengths are not secret.
     /// </summary>
     private ApiKeyEntry? TryMatch(string? presented)
     {
@@ -115,13 +115,19 @@ internal sealed class ApiKeyAuthMiddleware
             return null;
 
         var now = _timeProvider.GetUtcNow();
+        var presentedBytes = Encoding.UTF8.GetBytes(presented);
+
         foreach (var entry in _options.ApiKeys)
         {
             if (!entry.IsActive(now))
                 continue;
 
-            if (string.Equals(entry.Key, presented, StringComparison.Ordinal))
+            var entryBytes = Encoding.UTF8.GetBytes(entry.Key);
+            if (entryBytes.Length == presentedBytes.Length &&
+                CryptographicOperations.FixedTimeEquals(presentedBytes, entryBytes))
+            {
                 return entry;
+            }
         }
 
         return null;
