@@ -120,6 +120,26 @@ if (revalidationEnabled)
     builder.Services.AddHostedService<Tracer.Infrastructure.BackgroundJobs.RevalidationScheduler>();
 }
 
+// CKB archival (B-83) — daily BackgroundService that archives one-shot profiles
+// (TraceCount ≤ 1, LastEnrichedAt > 12 months ago). Options are bound + validated;
+// the service is only registered when Archival:Enabled = true.
+// Un-archive on incoming trace is wired into CkbPersistenceService and runs regardless.
+builder.Services.AddOptions<Tracer.Application.Services.ArchivalOptions>()
+    .Bind(builder.Configuration.GetSection(Tracer.Application.Services.ArchivalOptions.SectionName))
+    .Validate(o => o.IntervalHours >= 1, "Archival:IntervalHours must be >= 1.")
+    .Validate(o => o.MinAgeDays >= 1, "Archival:MinAgeDays must be >= 1.")
+    .Validate(o => o.MaxTraceCount >= 0, "Archival:MaxTraceCount must be >= 0.")
+    .Validate(o => o.BatchSize is >= 1 and <= 10_000, "Archival:BatchSize must be between 1 and 10000.")
+    .ValidateOnStart();
+
+var archivalEnabled = builder.Configuration
+    .GetSection(Tracer.Application.Services.ArchivalOptions.SectionName)
+    .GetValue<bool?>("Enabled") ?? true;
+if (archivalEnabled)
+{
+    builder.Services.AddHostedService<Tracer.Infrastructure.BackgroundJobs.ArchivalService>();
+}
+
 // Service Bus consumer (optional — only when connection string is configured)
 var sbConnectionString = builder.Configuration.GetConnectionString("ServiceBus");
 if (!string.IsNullOrWhiteSpace(sbConnectionString))
