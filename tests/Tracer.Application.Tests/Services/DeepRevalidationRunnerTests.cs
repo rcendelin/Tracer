@@ -74,6 +74,20 @@ public sealed class DeepRevalidationRunnerTests
         EnrichedAt = FixedNow,
     };
 
+    /// <summary>
+    /// Stubs <see cref="IWaterfallOrchestrator.ExecuteAsync"/> to return
+    /// <paramref name="refreshed"/> and capture the submitted
+    /// <see cref="TraceRequest"/> into <paramref name="captureSlot"/>.
+    /// </summary>
+    private void StubOrchestrator(CompanyProfile refreshed, Action<TraceRequest> captureSlot) =>
+        _orchestrator
+            .ExecuteAsync(Arg.Any<TraceRequest>(), Arg.Any<CancellationToken>())
+            .Returns(ci =>
+            {
+                captureSlot(ci.Arg<TraceRequest>());
+                return refreshed;
+            });
+
     // ── Trigger / threshold ─────────────────────────────────────────────
 
     [Fact]
@@ -156,8 +170,7 @@ public sealed class DeepRevalidationRunnerTests
             taxId: "CZ00177041");
 
         TraceRequest? captured = null;
-        _orchestrator.ExecuteAsync(Arg.Do<TraceRequest>(r => captured = r), Arg.Any<CancellationToken>())
-            .Returns(profile);
+        StubOrchestrator(profile, r => captured = r);
         var sut = CreateSut();
 
         var outcome = await sut.RunAsync(profile, CancellationToken.None);
@@ -188,25 +201,23 @@ public sealed class DeepRevalidationRunnerTests
         _orchestrator.ExecuteAsync(Arg.Any<TraceRequest>(), Arg.Any<CancellationToken>())
             .Returns(profile);
 
-        ValidationRecord? capturedRecord = null;
-        await _validationRepo.AddAsync(
-            Arg.Do<ValidationRecord>(r => capturedRecord = r),
-            Arg.Any<CancellationToken>());
-
         var sut = CreateSut();
         var beforeValidatedAt = profile.LastValidatedAt;
 
         var outcome = await sut.RunAsync(profile, CancellationToken.None);
 
         outcome.Should().Be(RevalidationOutcome.Deep);
-        capturedRecord.Should().NotBeNull();
-        capturedRecord!.CompanyProfileId.Should().Be(profile.Id);
-        capturedRecord.ValidationType.Should().Be(ValidationType.Deep);
-        capturedRecord.FieldsChecked.Should().Be(3);
-        capturedRecord.FieldsChanged.Should().Be(3);
-        capturedRecord.ProviderId.Should().Be(DeepRevalidationRunner.ValidationProviderId);
-        capturedRecord.DurationMs.Should().BeGreaterThanOrEqualTo(0);
+        await _validationRepo.Received(1).AddAsync(
+            Arg.Is<ValidationRecord>(r =>
+                r.CompanyProfileId == profile.Id &&
+                r.ValidationType == ValidationType.Deep &&
+                r.FieldsChecked == 3 &&
+                r.FieldsChanged == 3 &&
+                r.ProviderId == DeepRevalidationRunner.ValidationProviderId &&
+                r.DurationMs >= 0),
+            Arg.Any<CancellationToken>());
         profile.LastValidatedAt.Should().NotBe(beforeValidatedAt);
+        profile.LastValidatedAt.Should().NotBeNull();
     }
 
     [Fact]
@@ -216,8 +227,7 @@ public sealed class DeepRevalidationRunnerTests
             .Returns(new[] { FieldName.EntityStatus, FieldName.Phone, FieldName.Email });
         var profile = CreateProfile();
         TraceRequest? captured = null;
-        _orchestrator.ExecuteAsync(Arg.Do<TraceRequest>(r => captured = r), Arg.Any<CancellationToken>())
-            .Returns(profile);
+        StubOrchestrator(profile, r => captured = r);
         var sut = CreateSut();
 
         var outcome = await sut.RunAsync(profile, CancellationToken.None);
@@ -244,19 +254,14 @@ public sealed class DeepRevalidationRunnerTests
             .Returns(5, 2);
         _orchestrator.ExecuteAsync(Arg.Any<TraceRequest>(), Arg.Any<CancellationToken>())
             .Returns(profile);
-
-        ValidationRecord? capturedRecord = null;
-        await _validationRepo.AddAsync(
-            Arg.Do<ValidationRecord>(r => capturedRecord = r),
-            Arg.Any<CancellationToken>());
-
         var sut = CreateSut();
 
         var outcome = await sut.RunAsync(profile, CancellationToken.None);
 
         outcome.Should().Be(RevalidationOutcome.Deep);
-        capturedRecord.Should().NotBeNull();
-        capturedRecord!.FieldsChanged.Should().Be(0);
+        await _validationRepo.Received(1).AddAsync(
+            Arg.Is<ValidationRecord>(r => r.FieldsChanged == 0),
+            Arg.Any<CancellationToken>());
     }
 
     // ── Error handling ──────────────────────────────────────────────────
@@ -268,7 +273,10 @@ public sealed class DeepRevalidationRunnerTests
             .Returns(new[] { FieldName.EntityStatus, FieldName.Phone, FieldName.Email });
         var profile = CreateProfile();
         TraceRequest? captured = null;
-        _orchestrator.ExecuteAsync(Arg.Do<TraceRequest>(r => captured = r), Arg.Any<CancellationToken>())
+        _traceRepo
+            .When(x => x.AddAsync(Arg.Any<TraceRequest>(), Arg.Any<CancellationToken>()))
+            .Do(ci => captured = ci.Arg<TraceRequest>());
+        _orchestrator.ExecuteAsync(Arg.Any<TraceRequest>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new InvalidOperationException("boom"));
         var sut = CreateSut();
 
@@ -304,7 +312,10 @@ public sealed class DeepRevalidationRunnerTests
             .Returns(new[] { FieldName.EntityStatus, FieldName.Phone, FieldName.Email });
         var profile = CreateProfile();
         TraceRequest? captured = null;
-        _orchestrator.ExecuteAsync(Arg.Do<TraceRequest>(r => captured = r), Arg.Any<CancellationToken>())
+        _traceRepo
+            .When(x => x.AddAsync(Arg.Any<TraceRequest>(), Arg.Any<CancellationToken>()))
+            .Do(ci => captured = ci.Arg<TraceRequest>());
+        _orchestrator.ExecuteAsync(Arg.Any<TraceRequest>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new OperationCanceledException());
         var sut = CreateSut();
 
