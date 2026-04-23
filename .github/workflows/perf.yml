@@ -1,0 +1,102 @@
+name: Performance
+
+# Manual-dispatch-only. Never blocks PR merges — perf runs are opt-in and
+# optionally target a deployed staging environment. See docs/performance/
+# for interpretation guidance and baseline history.
+on:
+  workflow_dispatch:
+    inputs:
+      job:
+        description: 'Which suite to run'
+        required: true
+        default: 'benchmarks'
+        type: choice
+        options:
+          - benchmarks
+          - load-test
+          - both
+      k6_script:
+        description: 'k6 script name (without .js) — used when job includes load-test'
+        required: false
+        default: 'trace-smoke'
+        type: choice
+        options:
+          - trace-smoke
+          - trace-load
+          - batch-load
+          - dashboard-load
+      base_url:
+        description: 'Base URL for load tests (required when job includes load-test)'
+        required: false
+        type: string
+
+env:
+  DOTNET_VERSION: '10.0.x'
+
+jobs:
+  benchmarks:
+    name: BenchmarkDotNet micro-benchmarks
+    if: ${{ inputs.job == 'benchmarks' || inputs.job == 'both' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore
+        run: dotnet restore tests/Tracer.Benchmarks/Tracer.Benchmarks.csproj
+
+      - name: Run benchmarks
+        run: dotnet run --project tests/Tracer.Benchmarks --configuration Release -- --filter '*' --exporters json markdown
+
+      - name: Upload BenchmarkDotNet artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-results
+          path: BenchmarkDotNet.Artifacts/
+          retention-days: 90
+
+  load-test:
+    name: k6 load test
+    if: ${{ inputs.job == 'load-test' || inputs.job == 'both' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate inputs
+        run: |
+          if [ -z "${{ inputs.base_url }}" ]; then
+            echo "::error::base_url input is required when running load-test." >&2
+            exit 1
+          fi
+
+      - name: Install k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install -y k6
+
+      - name: Run k6 scenario
+        env:
+          BASE_URL: ${{ inputs.base_url }}
+          API_KEY: ${{ secrets.PERF_API_KEY }}
+        run: |
+          if [ -z "$API_KEY" ]; then
+            echo "::error::PERF_API_KEY secret is not configured for this environment." >&2
+            exit 1
+          fi
+          k6 run --out json=k6-results.json "deploy/k6/${{ inputs.k6_script }}.js"
+
+      - name: Upload k6 results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: k6-results-${{ inputs.k6_script }}
+          path: k6-results.json
+          retention-days: 90
