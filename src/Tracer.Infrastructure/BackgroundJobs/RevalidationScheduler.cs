@@ -20,9 +20,9 @@ namespace Tracer.Infrastructure.BackgroundJobs;
 /// <remarks>
 /// <para>
 /// The actual re-validation logic lives in <see cref="IRevalidationRunner"/>.
-/// In B-65 the only implementation is <see cref="NoOpRevalidationRunner"/>
-/// which returns <see cref="RevalidationOutcome.Deferred"/>. B-66 adds the
-/// lightweight mode and B-67 adds the deep mode.
+/// Production wiring uses <see cref="DeepRevalidationRunner"/> (B-67); the
+/// lightweight mode (B-66) is added in a follow-up block.
+/// <see cref="NoOpRevalidationRunner"/> is retained as a test double.
 /// </para>
 /// <para>
 /// Design notes:

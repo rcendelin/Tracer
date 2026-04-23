@@ -3,9 +3,11 @@ using Tracer.Domain.Entities;
 namespace Tracer.Application.Services;
 
 /// <summary>
-/// Placeholder implementation of <see cref="IRevalidationRunner"/> used
-/// until the lightweight (B-66) and deep (B-67) pipelines are wired up.
-/// Always returns <see cref="RevalidationOutcome.Deferred"/>.
+/// No-op implementation of <see cref="IRevalidationRunner"/>. Always returns
+/// <see cref="RevalidationOutcome.Deferred"/>. Retained as a placeholder
+/// double for unit tests that exercise <c>RevalidationScheduler</c> without
+/// standing up the full deep-mode dependency graph. Production wiring uses
+/// <see cref="DeepRevalidationRunner"/> (B-67).
 /// </summary>
 internal sealed class NoOpRevalidationRunner : IRevalidationRunner
 {

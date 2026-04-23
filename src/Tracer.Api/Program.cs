@@ -112,6 +112,15 @@ builder.Services.AddInfrastructure(connectionString);
 builder.Services.AddOptions<Tracer.Application.Services.RevalidationOptions>()
     .Bind(builder.Configuration.GetSection(Tracer.Application.Services.RevalidationOptions.SectionName));
 
+// Deep re-validation (B-67) — threshold that triggers full waterfall re-enrichment.
+// ValidateOnStart fails fast if an operator sets a non-positive threshold in config.
+builder.Services.AddOptions<Tracer.Application.Services.DeepRevalidationOptions>()
+    .Bind(builder.Configuration.GetSection(Tracer.Application.Services.DeepRevalidationOptions.SectionName))
+    .Validate(
+        o => o.Threshold >= 1,
+        "Revalidation:Deep:Threshold must be at least 1.")
+    .ValidateOnStart();
+
 var revalidationEnabled = builder.Configuration
     .GetSection(Tracer.Application.Services.RevalidationOptions.SectionName)
     .GetValue<bool?>("Enabled") ?? true;
