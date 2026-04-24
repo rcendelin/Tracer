@@ -43,8 +43,10 @@ public sealed class ChangeEvent : BaseEntity
     public FieldName Field { get; private set; }
     public ChangeType ChangeType { get; private set; }
     public ChangeSeverity Severity { get; private set; }
-    // TODO: GDPR — When Officers or contact person fields are added,
-    // redact PII from these JSON values before storing/emitting.
+    // GDPR: personal-data fields (classified via IGdprPolicy in the Application layer)
+    // are stripped by WaterfallOrchestrator before UpdateField() runs, so these JSON
+    // payloads should never contain PII for non-consented requests. Any new personal-data
+    // field must be registered in GdprPolicy.Classify() — do not add field-level redaction here.
     public string? PreviousValueJson { get; private set; }
     public string? NewValueJson { get; private set; }
 

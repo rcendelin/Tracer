@@ -95,4 +95,16 @@ public interface ICompanyProfileRepository
         DateTimeOffset? validatedBefore = null,
         bool includeArchived = false,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns the average overall confidence across profiles. Profiles whose
+    /// <c>OverallConfidence</c> has not been set are excluded from the average
+    /// (they do not pull the average down). Returns <c>0.0</c> when no profiles
+    /// have a confidence value — callers should treat that as "no data".
+    /// </summary>
+    /// <param name="includeArchived">Whether to include archived profiles. Default: <see langword="false"/>.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<double> GetAverageConfidenceAsync(
+        bool includeArchived = false,
+        CancellationToken cancellationToken = default);
 }
