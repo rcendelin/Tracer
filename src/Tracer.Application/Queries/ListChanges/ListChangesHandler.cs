@@ -29,11 +29,13 @@ public sealed class ListChangesHandler : IRequestHandler<ListChangesQuery, Paged
             page, pageSize,
             request.Severity,
             request.ProfileId,
+            request.Since,
             cancellationToken).ConfigureAwait(false);
 
         var total = await _repository.CountAsync(
             request.Severity,
             request.ProfileId,
+            request.Since,
             cancellationToken).ConfigureAwait(false);
 
         return new PagedResult<ChangeEventDto>

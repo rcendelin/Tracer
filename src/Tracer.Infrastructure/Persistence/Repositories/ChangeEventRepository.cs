@@ -76,9 +76,10 @@ internal sealed class ChangeEventRepository : IChangeEventRepository
     public async Task<IReadOnlyCollection<ChangeEvent>> ListAsync(
         int page, int pageSize,
         ChangeSeverity? severity, Guid? profileId,
+        DateTimeOffset? since,
         CancellationToken cancellationToken)
     {
-        return await ApplyFilters(_db.ChangeEvents.AsNoTracking(), severity, profileId)
+        return await ApplyFilters(_db.ChangeEvents.AsNoTracking(), severity, profileId, since)
             .OrderByDescending(e => e.DetectedAt)
             .Skip(page * pageSize)
             .Take(pageSize)
@@ -88,9 +89,10 @@ internal sealed class ChangeEventRepository : IChangeEventRepository
 
     public async Task<int> CountAsync(
         ChangeSeverity? severity, Guid? profileId,
+        DateTimeOffset? since,
         CancellationToken cancellationToken)
     {
-        return await ApplyFilters(_db.ChangeEvents.AsNoTracking(), severity, profileId)
+        return await ApplyFilters(_db.ChangeEvents.AsNoTracking(), severity, profileId, since)
             .CountAsync(cancellationToken)
             .ConfigureAwait(false);
     }
@@ -114,7 +116,7 @@ internal sealed class ChangeEventRepository : IChangeEventRepository
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxRows);
 
-        var query = ApplyFilters(_db.ChangeEvents.AsNoTracking(), severity, profileId);
+        var query = ApplyFilters(_db.ChangeEvents.AsNoTracking(), severity, profileId, since: null);
         if (from.HasValue)
             query = query.Where(e => e.DetectedAt >= from.Value);
         if (to.HasValue)
@@ -155,12 +157,15 @@ internal sealed class ChangeEventRepository : IChangeEventRepository
     private static IQueryable<ChangeEvent> ApplyFilters(
         IQueryable<ChangeEvent> query,
         ChangeSeverity? severity,
-        Guid? profileId)
+        Guid? profileId,
+        DateTimeOffset? since)
     {
         if (severity.HasValue)
             query = query.Where(e => e.Severity == severity.Value);
         if (profileId.HasValue)
             query = query.Where(e => e.CompanyProfileId == profileId.Value);
+        if (since.HasValue)
+            query = query.Where(e => e.DetectedAt >= since.Value);
         return query;
     }
 }

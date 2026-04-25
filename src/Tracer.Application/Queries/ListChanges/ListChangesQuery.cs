@@ -17,4 +17,10 @@ public sealed record ListChangesQuery : IRequest<PagedResult<ChangeEventDto>>
 
     /// <summary>Optional profile ID filter to show changes for a single company.</summary>
     public Guid? ProfileId { get; init; }
+
+    /// <summary>
+    /// Optional inclusive lower bound on <c>DetectedAt</c> (B-73 Change Feed since-filter,
+    /// e.g. "last 7 days"). <see langword="null"/> returns all history.
+    /// </summary>
+    public DateTimeOffset? Since { get; init; }
 }

@@ -21,13 +21,16 @@ public sealed class GetChangeStatsHandler : IRequestHandler<GetChangeStatsQuery,
         GetChangeStatsQuery request,
         CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(request);
+
         // EF Core DbContext is not thread-safe — run counts sequentially.
         // These are cheap indexed COUNT queries on a small enum cardinality, so
         // the latency difference vs. fan-out is negligible.
-        var critical = await _repository.CountAsync(ChangeSeverity.Critical, null, cancellationToken).ConfigureAwait(false);
-        var major    = await _repository.CountAsync(ChangeSeverity.Major,    null, cancellationToken).ConfigureAwait(false);
-        var minor    = await _repository.CountAsync(ChangeSeverity.Minor,    null, cancellationToken).ConfigureAwait(false);
-        var cosmetic = await _repository.CountAsync(ChangeSeverity.Cosmetic, null, cancellationToken).ConfigureAwait(false);
+        var since = request.Since;
+        var critical = await _repository.CountAsync(ChangeSeverity.Critical, null, since, cancellationToken).ConfigureAwait(false);
+        var major    = await _repository.CountAsync(ChangeSeverity.Major,    null, since, cancellationToken).ConfigureAwait(false);
+        var minor    = await _repository.CountAsync(ChangeSeverity.Minor,    null, since, cancellationToken).ConfigureAwait(false);
+        var cosmetic = await _repository.CountAsync(ChangeSeverity.Cosmetic, null, since, cancellationToken).ConfigureAwait(false);
 
         return new ChangeStatsDto
         {

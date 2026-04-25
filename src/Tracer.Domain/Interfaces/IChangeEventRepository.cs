@@ -50,25 +50,30 @@ public interface IChangeEventRepository
     Task<int> CountBySeverityAsync(ChangeSeverity minSeverity, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Lists change events with optional exact severity and profile filters, ordered by detection date descending.
+    /// Lists change events with optional exact severity, profile and <c>DetectedAt</c>
+    /// lower-bound filters, ordered by detection date descending.
     /// </summary>
     /// <param name="page">Zero-based page index.</param>
     /// <param name="pageSize">Number of items per page.</param>
     /// <param name="severity">Optional exact severity filter. <see langword="null"/> returns all severities.</param>
     /// <param name="profileId">Optional profile ID filter.</param>
+    /// <param name="since">Optional inclusive lower bound on <c>DetectedAt</c> (B-73 Change Feed since-filter).</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     Task<IReadOnlyCollection<ChangeEvent>> ListAsync(
         int page, int pageSize,
         ChangeSeverity? severity = null,
         Guid? profileId = null,
+        DateTimeOffset? since = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Counts change events with optional exact severity and profile filters.
+    /// Counts change events with optional exact severity, profile and <c>DetectedAt</c>
+    /// lower-bound filters.
     /// </summary>
     Task<int> CountAsync(
         ChangeSeverity? severity = null,
         Guid? profileId = null,
+        DateTimeOffset? since = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>

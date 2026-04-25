@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Tracer.Application.Commands.AcknowledgeChange;
 using Tracer.Application.DTOs;
 using Tracer.Application.Queries.GetChangeStats;
 using Tracer.Application.Queries.ListChanges;
@@ -44,6 +45,15 @@ internal static class ChangesEndpoints
             .ProducesProblem(StatusCodes.Status429TooManyRequests)
             .RequireRateLimiting("export");
 
+        // B-73: Idempotent acknowledge — operator marks a change event as reviewed.
+        group.MapPost("/{id:guid}/acknowledge", AcknowledgeChangeAsync)
+            .WithName("AcknowledgeChange")
+            .WithSummary("Mark a change event as acknowledged (notified)")
+            .WithDescription("Idempotent: returns 204 whether or not the change was previously acknowledged. Returns 404 if no event with the given id exists.")
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status401Unauthorized);
+
         return group;
     }
 
@@ -53,7 +63,8 @@ internal static class ChangesEndpoints
         [FromQuery] int page = 0,
         [FromQuery] int pageSize = 20,
         [FromQuery] ChangeSeverity? severity = null,
-        [FromQuery] Guid? profileId = null)
+        [FromQuery] Guid? profileId = null,
+        [FromQuery] DateTimeOffset? since = null)
     {
         var result = await mediator.Send(
             new ListChangesQuery
@@ -62,6 +73,7 @@ internal static class ChangesEndpoints
                 PageSize = pageSize,
                 Severity = severity,
                 ProfileId = profileId,
+                Since = since,
             },
             cancellationToken).ConfigureAwait(false);
 
@@ -70,11 +82,32 @@ internal static class ChangesEndpoints
 
     private static async Task<Ok<ChangeStatsDto>> GetChangeStatsAsync(
         IMediator mediator,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        [FromQuery] DateTimeOffset? since = null)
     {
-        var result = await mediator.Send(new GetChangeStatsQuery(), cancellationToken)
+        var result = await mediator.Send(new GetChangeStatsQuery { Since = since }, cancellationToken)
             .ConfigureAwait(false);
         return TypedResults.Ok(result);
+    }
+
+    private static async Task<IResult> AcknowledgeChangeAsync(
+        IMediator mediator,
+        [FromRoute] Guid id,
+        CancellationToken cancellationToken)
+    {
+        var outcome = await mediator.Send(
+            new AcknowledgeChangeCommand(id),
+            cancellationToken).ConfigureAwait(false);
+
+        return outcome switch
+        {
+            AcknowledgeChangeResult.Acknowledged => TypedResults.NoContent(),
+            AcknowledgeChangeResult.NotFound => TypedResults.Problem(
+                statusCode: StatusCodes.Status404NotFound,
+                title: "Change event not found",
+                detail: $"No change event with id {id} exists."),
+            _ => TypedResults.Problem(statusCode: StatusCodes.Status500InternalServerError),
+        };
     }
 
     private static async Task<IResult> ExportChangesAsync(
