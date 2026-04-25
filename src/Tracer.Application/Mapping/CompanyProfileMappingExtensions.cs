@@ -46,6 +46,10 @@ public static class CompanyProfileMappingExtensions
         EntityStatus = profile.EntityStatus.ToDto(),
         ParentCompany = profile.ParentCompany.ToDto(),
             Location = profile.Location.ToDto(),
+            // B-93: Officers — GDPR strip happens upstream in WaterfallOrchestrator
+            // (when TraceRequest.IncludeOfficers = false), so this mapping faithfully
+            // surfaces whatever made it into the persisted CKB profile.
+            Officers = profile.Officers.ToDto(),
         };
     }
 }

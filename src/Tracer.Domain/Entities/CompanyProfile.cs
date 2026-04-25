@@ -85,6 +85,14 @@ public sealed class CompanyProfile : BaseEntity, IAggregateRoot
     public TracedField<string>? ParentCompany { get; private set; }
     public TracedField<GeoCoordinate>? Location { get; private set; }
 
+    /// <summary>
+    /// Directors / officers (B-93). GDPR-gated <see cref="Tracer.Domain.Enums.FieldClassification.PersonalData"/>;
+    /// the <c>WaterfallOrchestrator</c> strips this field upstream when
+    /// <c>TraceRequest.IncludeOfficers = false</c> (per `IGdprPolicy.PersonalDataFields`),
+    /// so this property is only populated for explicit opt-in traces.
+    /// </summary>
+    public TracedField<IReadOnlyList<string>>? Officers { get; private set; }
+
     // ── CKB metadata ────────────────────────────────────────────────
 
     public DateTimeOffset CreatedAt { get; private set; }
@@ -165,6 +173,10 @@ public sealed class CompanyProfile : BaseEntity, IAggregateRoot
             (FieldName.EntityStatus, EntityStatus?.EnrichedAt),
             (FieldName.ParentCompany, ParentCompany?.EnrichedAt),
             (FieldName.Location, Location?.EnrichedAt),
+            // B-93: Officers participates in TTL sweep when it's been enriched.
+            // GDPR gating happens at the orchestrator strip boundary; once the
+            // value reaches CKB, normal TTL semantics apply.
+            (FieldName.Officers, Officers?.EnrichedAt),
         };
 
         var now = DateTimeOffset.UtcNow;
@@ -241,6 +253,7 @@ public sealed class CompanyProfile : BaseEntity, IAggregateRoot
         FieldName.EntityStatus => EntityStatus is not null ? JsonSerializer.Serialize(EntityStatus.Value, ChangeJsonOptions) : null,
         FieldName.ParentCompany => ParentCompany is not null ? JsonSerializer.Serialize(ParentCompany.Value, ChangeJsonOptions) : null,
         FieldName.Location => Location is not null ? JsonSerializer.Serialize(Location.Value, ChangeJsonOptions) : null,
+        FieldName.Officers => Officers is not null ? JsonSerializer.Serialize(Officers.Value, ChangeJsonOptions) : null,
         _ => null,
     };
 
@@ -290,6 +303,9 @@ public sealed class CompanyProfile : BaseEntity, IAggregateRoot
             case FieldName.Location:
                 Location = CastField<T, GeoCoordinate>(value);
                 break;
+            case FieldName.Officers:
+                Officers = CastField<T, IReadOnlyList<string>>(value);
+                break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(fieldName), fieldName,
                     $"Unsupported field: {fieldName}.");
@@ -311,7 +327,7 @@ public sealed class CompanyProfile : BaseEntity, IAggregateRoot
             FieldName.EntityStatus => ChangeSeverity.Critical,
             FieldName.LegalName => ChangeSeverity.Major,
             FieldName.RegisteredAddress => ChangeSeverity.Major,
-            // Officers is GDPR-gated and will be handled separately in a future block.
+            FieldName.Officers => ChangeSeverity.Major, // B-93: GDPR-gated, but officer changes are business-significant
             FieldName.Phone => ChangeSeverity.Minor,
             FieldName.Email => ChangeSeverity.Minor,
             FieldName.Website => ChangeSeverity.Minor,
@@ -319,8 +335,11 @@ public sealed class CompanyProfile : BaseEntity, IAggregateRoot
             _ => changeType == ChangeType.Created ? ChangeSeverity.Cosmetic : ChangeSeverity.Minor,
         };
 
-    // Officers field is not stored as a TracedField property on CompanyProfile
-    // because it is GDPR-gated. It will be handled separately in a future block.
+    // B-93: Officers IS now a TracedField property — see declaration above.
+    // GDPR gating is enforced upstream in the WaterfallOrchestrator (it strips
+    // PersonalData fields per `IGdprPolicy.PersonalDataFields` when
+    // `TraceRequest.IncludeOfficers = false`), so the property is only set
+    // for explicit opt-in traces.
 
     /// <summary>
     /// Refreshes <see cref="TracedField{T}.EnrichedAt"/> on <paramref name="fieldName"/>
@@ -401,8 +420,13 @@ public sealed class CompanyProfile : BaseEntity, IAggregateRoot
                 if (Location is not null && Location.EnrichedAt < now)
                     Location = Location with { EnrichedAt = now };
                 break;
-            // Officers / RegistrationId are intentionally excluded — Officers is
-            // GDPR-gated; RegistrationId is not a TracedField<T> (no EnrichedAt).
+            case FieldName.Officers:
+                // B-93: Officers is a TracedField. GDPR gating is upstream.
+                if (Officers is not null && Officers.EnrichedAt < now)
+                    Officers = Officers with { EnrichedAt = now };
+                break;
+            // RegistrationId is not a TracedField<T> (no EnrichedAt) and falls
+            // through to default — refresh has nothing to do.
             default:
                 break;
         }

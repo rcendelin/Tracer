@@ -34,4 +34,17 @@ public static class TracedFieldMappingExtensions
             Source = field.Source,
             EnrichedAt = field.EnrichedAt,
         };
+
+    /// <summary>
+    /// B-93: Officers list mapping. Returns the same <c>IReadOnlyList&lt;string&gt;</c>
+    /// reference in the DTO — values are plain strings, no per-element conversion needed.
+    /// </summary>
+    public static TracedFieldDto<IReadOnlyList<string>>? ToDto(this TracedField<IReadOnlyList<string>>? field) =>
+        field is null ? null : new TracedFieldDto<IReadOnlyList<string>>
+        {
+            Value = field.Value,
+            Confidence = field.Confidence.Value,
+            Source = field.Source,
+            EnrichedAt = field.EnrichedAt,
+        };
 }

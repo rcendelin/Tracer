@@ -105,8 +105,11 @@ internal sealed class FieldTtlPolicy : IFieldTtlPolicy
         if (profile.EntityStatus is not null)      yield return (FieldName.EntityStatus, profile.EntityStatus.EnrichedAt);
         if (profile.ParentCompany is not null)     yield return (FieldName.ParentCompany, profile.ParentCompany.EnrichedAt);
         if (profile.Location is not null)          yield return (FieldName.Location, profile.Location.EnrichedAt);
+        // B-93: Officers is a TracedField now. GDPR gating happens upstream
+        // (WaterfallOrchestrator strips when TraceRequest.IncludeOfficers = false);
+        // once stored in CKB, normal TTL semantics apply (default 90 days from FieldTtl.For).
+        if (profile.Officers is not null)          yield return (FieldName.Officers, profile.Officers.EnrichedAt);
         // RegistrationId is stored on CompanyProfile as a plain string identifier,
         // not a TracedField, so it has no EnrichedAt and is not subject to TTL expiry.
-        // Officers is GDPR-gated and not stored as a TracedField property (see B-69).
     }
 }
