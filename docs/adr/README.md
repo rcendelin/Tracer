@@ -31,3 +31,4 @@ template](https://github.com/joelparkerhenderson/architecture-decision-record/tr
 | [0003](./0003-waterfall-orchestrator.md) | Waterfall orchestrator with parallel Tier 1 and depth budgets | Accepted |
 | [0004](./0004-domain-events-via-mediatr.md) | Domain events via MediatR, dispatched in `TracerDbContext.SaveChangesAsync` | Accepted |
 | [0005](./0005-no-mock-database.md) | Integration tests run against real SQL Server (Testcontainers) | Accepted |
+| [0006](./0006-confidence-scoring.md) | Confidence scoring: continuous freshness + N-tier verification | Accepted |
