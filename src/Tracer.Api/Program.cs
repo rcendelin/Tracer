@@ -244,7 +244,10 @@ builder.Services.Configure<Microsoft.AspNetCore.HttpsPolicy.HstsOptions>(hsts =>
         ?? false;
 });
 
-// Rate limiting — batch endpoint: 5 requests per minute per client IP
+// Rate limiting — batch endpoint: 5 requests per minute per client IP,
+// export endpoints: 10 requests per minute per client IP (B-81).
+// Exports are IO-heavy (up to 10k rows written to the response) — a per-IP
+// fixed-window limiter keeps a single client from monopolising worker threads.
 builder.Services.AddRateLimiter(options =>
 {
     options.AddPolicy("batch", httpContext =>
@@ -257,6 +260,18 @@ builder.Services.AddRateLimiter(options =>
                 QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
                 QueueLimit = 0,
             }));
+
+    options.AddPolicy("export", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0,
+            }));
+
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 });
 

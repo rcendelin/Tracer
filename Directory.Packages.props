@@ -69,6 +69,13 @@
     <PackageVersion Include="AngleSharp" Version="1.2.0" />
   </ItemGroup>
 
+  <ItemGroup Label="Export (CSV / XLSX)">
+    <!-- B-81: Batch export. CsvHelper streams rows to response body; ClosedXML
+         builds a workbook in memory (cap 10k rows = a few MB, acceptable). -->
+    <PackageVersion Include="CsvHelper" Version="33.0.1" />
+    <PackageVersion Include="ClosedXML" Version="0.104.2" />
+  </ItemGroup>
+
   <ItemGroup Label="Testing">
     <PackageVersion Include="xunit" Version="2.9.3" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="2.8.2" />

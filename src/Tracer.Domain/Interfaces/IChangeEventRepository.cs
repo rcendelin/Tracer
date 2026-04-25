@@ -79,4 +79,27 @@ public interface IChangeEventRepository
     /// <param name="detectedAfter">Inclusive lower bound. Typically start-of-day UTC.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     Task<int> CountSinceAsync(DateTimeOffset detectedAfter, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Streams up to <paramref name="maxRows"/> change events matching the specified
+    /// filters, ordered by <c>DetectedAt DESC</c>. Intended for batch export (B-81) —
+    /// caller is responsible for enforcing the absolute row cap.
+    /// </summary>
+    /// <remarks>
+    /// Implementations must use <c>AsNoTracking()</c> and SQL-side <c>Take(maxRows)</c>
+    /// so rows are streamed from the reader rather than materialised to a list.
+    /// The returned enumerable MUST be consumed within the same DbContext scope.
+    /// </remarks>
+    /// <param name="maxRows">Absolute row cap (1 ≤ maxRows ≤ 10_000).</param>
+    /// <param name="severity">Optional exact severity filter.</param>
+    /// <param name="profileId">Optional profile ID filter.</param>
+    /// <param name="from">Inclusive lower bound on <c>DetectedAt</c>.</param>
+    /// <param name="to">Exclusive upper bound on <c>DetectedAt</c>.</param>
+    IAsyncEnumerable<ChangeEvent> StreamAsync(
+        int maxRows,
+        ChangeSeverity? severity = null,
+        Guid? profileId = null,
+        DateTimeOffset? from = null,
+        DateTimeOffset? to = null,
+        CancellationToken cancellationToken = default);
 }

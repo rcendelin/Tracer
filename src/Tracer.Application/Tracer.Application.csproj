@@ -16,6 +16,11 @@
     <PackageReference Include="FluentValidation" />
     <PackageReference Include="FluentValidation.DependencyInjectionExtensions" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <!-- B-81: Batch export (CSV / XLSX). Both libraries are content-only
+         (no I/O to Infrastructure types), so they belong in Application
+         next to the export services. -->
+    <PackageReference Include="CsvHelper" />
+    <PackageReference Include="ClosedXML" />
   </ItemGroup>
 
   <ItemGroup>
