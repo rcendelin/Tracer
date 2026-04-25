@@ -2,12 +2,15 @@ using MediatR;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Tracer.Api.Middleware;
+using Tracer.Application.Commands.OverrideField;
 using Tracer.Application.DTOs;
 using Tracer.Application.Queries.GetProfile;
 using Tracer.Application.Queries.GetProfileHistory;
 using Tracer.Application.Queries.ListProfiles;
 using Tracer.Application.Services;
 using Tracer.Application.Services.Export;
+using Tracer.Domain.Enums;
 using Tracer.Domain.Interfaces;
 
 namespace Tracer.Api.Endpoints;
@@ -67,8 +70,26 @@ internal static class ProfileEndpoints
             .ProducesProblem(StatusCodes.Status429TooManyRequests)
             .RequireRateLimiting("export");
 
+        // B-85: Manual field override with full audit trail via ChangeEvent
+        // (ChangeType = ManualOverride, DetectedBy carries caller fingerprint).
+        group.MapPut("/{profileId:guid}/fields/{field}", OverrideFieldAsync)
+            .WithName("OverrideProfileField")
+            .WithSummary("Manually override a single string-typed CKB field with audit")
+            .WithDescription("Operator-driven correction for fields that automated enrichment cannot reach (e.g. Phone, Email, EntityStatus). Caller identity is server-derived from the API key; the request body never carries it. Returns 204 on success / no-change, 400 for unsupported fields, 404 for unknown profiles. The change appears in GET /api/profiles/{id}/history with ChangeType = ManualOverride.")
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
         return group;
     }
+
+    /// <summary>
+    /// Body shape for <c>PUT /api/profiles/{id}/fields/{field}</c>. Caller
+    /// identity is intentionally absent from the body — it is read server-side
+    /// from <see cref="ApiKeyAuthMiddleware.CallerFingerprintItemKey"/>.
+    /// </summary>
+    public sealed record OverrideFieldRequest(string Value, string Reason);
 
     private static async Task<Ok<PagedResult<CompanyProfileDto>>> ListProfilesAsync(
         [FromQuery] int page,
@@ -243,5 +264,70 @@ internal static class ProfileEndpoints
         return result is not null
             ? TypedResults.Ok(result)
             : TypedResults.NotFound();
+    }
+
+    private static async Task<IResult> OverrideFieldAsync(
+        [FromRoute] Guid profileId,
+        [FromRoute] string field,
+        [FromBody] OverrideFieldRequest body,
+        IMediator mediator,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        if (body is null)
+        {
+            return TypedResults.Problem(
+                statusCode: StatusCodes.Status400BadRequest,
+                title: "Body required",
+                detail: "Request body must contain { value, reason }.");
+        }
+
+        if (!Enum.TryParse<FieldName>(field, ignoreCase: true, out var parsedField)
+            || !Enum.IsDefined(typeof(FieldName), parsedField))
+        {
+            return TypedResults.Problem(
+                statusCode: StatusCodes.Status400BadRequest,
+                title: "Unknown field",
+                detail: $"'{field}' is not a recognised FieldName.");
+        }
+
+        // Caller fingerprint is server-derived (set by ApiKeyAuthMiddleware on
+        // successful auth). The body NEVER carries caller identity — that
+        // would be untrusted input (audit trail integrity, B-85 plan §3.3).
+        var fingerprint = http.Items[ApiKeyAuthMiddleware.CallerFingerprintItemKey] as string;
+        if (string.IsNullOrWhiteSpace(fingerprint))
+        {
+            return TypedResults.Problem(
+                statusCode: StatusCodes.Status401Unauthorized,
+                title: "Caller fingerprint unavailable",
+                detail: "Manual override requires an authenticated API key.");
+        }
+
+        var label = http.Items[ApiKeyAuthMiddleware.CallerLabelItemKey] as string;
+
+        var outcome = await mediator.Send(
+            new OverrideFieldCommand(
+                ProfileId: profileId,
+                Field: parsedField,
+                NewValue: body.Value ?? string.Empty,
+                Reason: body.Reason ?? string.Empty,
+                CallerFingerprint: fingerprint,
+                CallerLabel: label),
+            cancellationToken).ConfigureAwait(false);
+
+        return outcome switch
+        {
+            OverrideFieldResult.Overridden => TypedResults.NoContent(),
+            OverrideFieldResult.NoChange => TypedResults.NoContent(),
+            OverrideFieldResult.ProfileNotFound => TypedResults.Problem(
+                statusCode: StatusCodes.Status404NotFound,
+                title: "Profile not found",
+                detail: $"No company profile with id {profileId}."),
+            OverrideFieldResult.FieldNotOverridable => TypedResults.Problem(
+                statusCode: StatusCodes.Status400BadRequest,
+                title: "Field not overridable",
+                detail: $"Field '{parsedField}' cannot be overridden via this endpoint. Address / Location / Officers / RegistrationId are out of scope."),
+            _ => TypedResults.Problem(statusCode: StatusCodes.Status500InternalServerError),
+        };
     }
 }
