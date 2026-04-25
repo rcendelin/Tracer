@@ -87,6 +87,10 @@ internal static class ExporterTestFakes
             Task.FromResult<IReadOnlyCollection<CompanyProfile>>(
                 _profiles.Where(p => p.Country == country).Take(maxCount).ToList());
 
+        public Task<IReadOnlyCollection<CompanyProfile>> ListByCountryAsync(string country, int maxCount, int minTraceCount, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyCollection<CompanyProfile>>(
+                _profiles.Where(p => p.Country == country && p.TraceCount >= minTraceCount).Take(maxCount).ToList());
+
         public Task<int> CountAsync(
             string? search, string? country, double? minConfidence, double? maxConfidence,
             DateTimeOffset? validatedBefore, bool includeArchived,
