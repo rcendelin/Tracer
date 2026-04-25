@@ -1,9 +1,12 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { Pagination } from '../components/Pagination';
-import { useChanges, useChangeStats } from '../hooks/useChanges';
+import { useAcknowledgeChange, useChanges, useChangeStats } from '../hooks/useChanges';
 import { changesApi, type ExportFormat } from '../api/client';
 import type { ChangeSeverity, ChangeEvent } from '../types';
+
+// B-73: Time-window filter — "All time" (no since) or "Last 7 days".
+type ChangeWindow = 'all' | '7d';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -81,10 +84,12 @@ const SEVERITY_TABS: { label: string; value: ChangeSeverity | undefined }[] = [
 
 // ─── Change event row ────────────────────────────────────────────────────────
 
-function ChangeRow({ event, expanded, onToggle }: {
+function ChangeRow({ event, expanded, onToggle, onAcknowledge, acknowledging }: {
   event: ChangeEvent;
   expanded: boolean;
   onToggle: () => void;
+  onAcknowledge: () => void;
+  acknowledging: boolean;
 }) {
   const hasDiff = event.previousValueJson != null || event.newValueJson != null;
 
@@ -115,15 +120,29 @@ function ChangeRow({ event, expanded, onToggle }: {
             {event.isNotified && (
               <>
                 <span>·</span>
-                <span className="text-green-600">notified</span>
+                <span className="text-green-600">acknowledged</span>
               </>
             )}
           </div>
         </div>
 
+        {/* B-73: Acknowledge button — only for unacknowledged events. */}
+        {!event.isNotified && (
+          <button
+            type="button"
+            onClick={onAcknowledge}
+            disabled={acknowledging}
+            className="shrink-0 text-xs text-green-700 hover:text-green-900 px-2 py-1 rounded border border-green-200 hover:bg-green-50 transition-colors disabled:opacity-50 disabled:cursor-wait"
+            title="Mark this change as reviewed"
+          >
+            {acknowledging ? 'Acknowledging…' : 'Acknowledge'}
+          </button>
+        )}
+
         {/* Expand toggle */}
         {hasDiff && (
           <button
+            type="button"
             onClick={onToggle}
             className="shrink-0 text-xs text-blue-600 hover:text-blue-800 px-2 py-1 rounded border border-blue-200 hover:bg-blue-50 transition-colors"
           >
@@ -148,27 +167,59 @@ function ChangeRow({ event, expanded, onToggle }: {
 export function ChangeFeedPage() {
   const [page, setPage] = useState(0);
   const [severityFilter, setSeverityFilter] = useState<ChangeSeverity | undefined>(undefined);
+  const [windowFilter, setWindowFilter] = useState<ChangeWindow>('all');
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [exportingFormat, setExportingFormat] = useState<ExportFormat | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [pendingAckId, setPendingAckId] = useState<string | null>(null);
 
-  const { data: stats, isLoading: statsLoading } = useChangeStats();
+  // B-73: Compute the ISO 'since' bound. Memoised so identical renders share
+  // the same query key (TanStack would otherwise refetch on every render).
+  // The cut-off is rounded to the start of the current minute so the key
+  // does not invalidate on every wall-clock tick.
+  const sinceIso = useMemo(() => {
+    if (windowFilter !== '7d') return undefined;
+    const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    cutoff.setSeconds(0, 0);
+    return cutoff.toISOString();
+  }, [windowFilter]);
+
+  const { data: stats, isLoading: statsLoading } = useChangeStats(sinceIso);
   const { data: changes, isLoading, isError } = useChanges({
     page,
     pageSize: 20,
     severity: severityFilter,
+    since: sinceIso,
   });
+  const acknowledge = useAcknowledgeChange();
+
+  async function handleAcknowledge(id: string) {
+    setPendingAckId(id);
+    try {
+      await acknowledge.mutateAsync(id);
+    } finally {
+      setPendingAckId(null);
+    }
+  }
 
   async function handleExport(format: ExportFormat) {
     setExportingFormat(format);
     setExportError(null);
     try {
-      await changesApi.export(format, { severity: severityFilter });
+      await changesApi.export(format, {
+        severity: severityFilter,
+        from: sinceIso,
+      });
     } catch (err) {
       setExportError(err instanceof Error ? err.message : 'Export failed');
     } finally {
       setExportingFormat(null);
     }
+  }
+
+  function handleWindowChange(value: ChangeWindow) {
+    setWindowFilter(value);
+    setPage(0);
   }
 
   function toggleExpand(id: string) {
@@ -222,13 +273,35 @@ export function ChangeFeedPage() {
         </div>
       )}
 
+      {/* B-73: Time window toggle (All time / Last 7 days). */}
+      <div className="flex gap-1 items-center">
+        <span className="text-xs text-gray-500 mr-2">Time window:</span>
+        {([
+          { label: 'All time', value: 'all' as ChangeWindow },
+          { label: 'Last 7 days', value: '7d' as ChangeWindow },
+        ]).map(opt => (
+          <button
+            key={opt.value}
+            type="button"
+            onClick={() => handleWindowChange(opt.value)}
+            className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+              windowFilter === opt.value
+                ? 'bg-gray-900 text-white'
+                : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+            }`}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         {statsLoading ? (
           <div className="col-span-5 h-16 bg-gray-100 rounded-xl animate-pulse" />
         ) : stats ? (
           <>
-            <StatCard label="Total"    value={stats.totalCount}    color="text-gray-800" />
+            <StatCard label={windowFilter === '7d' ? 'Total · 7d' : 'Total'}    value={stats.totalCount}    color="text-gray-800" />
             <StatCard label="Critical" value={stats.criticalCount} color="text-red-600" />
             <StatCard label="Major"    value={stats.majorCount}    color="text-orange-600" />
             <StatCard label="Minor"    value={stats.minorCount}    color="text-yellow-600" />
@@ -283,6 +356,8 @@ export function ChangeFeedPage() {
                 event={event}
                 expanded={expandedIds.has(event.id)}
                 onToggle={() => toggleExpand(event.id)}
+                onAcknowledge={() => handleAcknowledge(event.id)}
+                acknowledging={pendingAckId === event.id}
               />
             ))}
           </div>
