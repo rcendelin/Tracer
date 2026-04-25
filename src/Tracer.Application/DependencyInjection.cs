@@ -42,10 +42,12 @@ public static class ApplicationServiceRegistration
         services.AddSingleton<IGdprPolicy, GdprPolicy>();
         services.AddSingleton<IPersonalDataAccessAudit, LoggingPersonalDataAccessAudit>();
 
-        // Re-validation (B-65) — runner is a no-op placeholder until B-66/B-67 replace it.
-        // Queue is singleton (in-memory Channel), scheduler lives in Infrastructure.
+        // Re-validation (B-65) — queue is singleton (in-memory Channel), scheduler lives in Infrastructure.
+        // Runner: DeepRevalidationRunner (B-67) is the default. When the profile has fewer expired fields
+        // than the configured threshold it returns Deferred, matching the current placeholder behaviour
+        // until the lightweight mode (B-66) replaces that branch.
         services.AddSingleton<IRevalidationQueue, RevalidationQueue>();
-        services.AddScoped<IRevalidationRunner, NoOpRevalidationRunner>();
+        services.AddScoped<IRevalidationRunner, DeepRevalidationRunner>();
 
         // Field TTL policy (B-68) — merges Revalidation:FieldTtl overrides with
         // platform defaults from FieldTtl.For(). Stateless, thread-safe.

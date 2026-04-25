@@ -9,19 +9,30 @@ namespace Tracer.Application.Services;
 /// and deep (full waterfall re-enrichment, B-67) strategies.
 /// </summary>
 /// <remarks>
-/// In B-65 this interface is registered as <see cref="NoOpRevalidationRunner"/>
-/// which simply returns <see cref="RevalidationOutcome.Deferred"/>. The
-/// <see cref="Tracer.Infrastructure.BackgroundJobs.RevalidationScheduler"/>
-/// depends only on this abstraction so the lightweight / deep pipelines
+/// Production wiring (B-67) uses <see cref="DeepRevalidationRunner"/>.
+/// <see cref="NoOpRevalidationRunner"/> is retained as a test double.
+/// The <see cref="Tracer.Infrastructure.BackgroundJobs.RevalidationScheduler"/>
+/// depends only on this abstraction so the lightweight / composite runners
 /// can be introduced in later blocks without changing the scheduler.
 /// </remarks>
 public interface IRevalidationRunner
 {
     /// <summary>
     /// Runs a re-validation pass against <paramref name="profile"/>.
-    /// Implementations must NOT call <c>SaveChangesAsync</c> themselves;
-    /// persistence is coordinated by the caller (scheduler) via
-    /// <see cref="Tracer.Domain.Interfaces.IUnitOfWork"/>.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Lightweight implementations (B-66) should only mutate the profile
+    /// in memory and leave persistence to the caller — the scheduler
+    /// saves changes after this method returns.
+    /// </para>
+    /// <para>
+    /// Deep implementations (B-67) reuse <see cref="IWaterfallOrchestrator"/>
+    /// which persists the profile internally; such runners therefore own
+    /// their own save boundaries for audit entities
+    /// (<see cref="Tracer.Domain.Entities.ValidationRecord"/>,
+    /// <see cref="Tracer.Domain.Entities.TraceRequest"/>).
+    /// </para>
+    /// </remarks>
     Task<RevalidationOutcome> RunAsync(CompanyProfile profile, CancellationToken cancellationToken);
 }
