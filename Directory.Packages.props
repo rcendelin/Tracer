@@ -6,6 +6,9 @@
 
   <ItemGroup Label="ASP.NET Core">
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.0-preview.4.25258.110" />
+    <!-- B-82: Scalar serves an interactive UI on top of the OpenAPI v3.1 spec generated
+         by Microsoft.AspNetCore.OpenApi. v2.x is the current stable line. -->
+    <PackageVersion Include="Scalar.AspNetCore" Version="2.0.26" />
   </ItemGroup>
 
   <ItemGroup Label="Extensions">

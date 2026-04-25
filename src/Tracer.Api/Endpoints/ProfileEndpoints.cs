@@ -24,18 +24,24 @@ internal static class ProfileEndpoints
         group.MapGet("/", ListProfilesAsync)
             .WithName("ListProfiles")
             .WithSummary("List CKB company profiles")
-            .Produces<PagedResult<CompanyProfileDto>>();
+            .WithDescription("Paged listing of Company Knowledge Base profiles. Supports free-text search (on RegistrationId / NormalizedKey), country filter, confidence range and archived-profile toggle.")
+            .Produces<PagedResult<CompanyProfileDto>>()
+            .ProducesProblem(StatusCodes.Status401Unauthorized);
 
         group.MapGet("/{profileId:guid}", GetProfileAsync)
             .WithName("GetProfile")
             .WithSummary("Get company profile by ID")
+            .WithDescription("Returns the golden record including per-field enrichment metadata (source, confidence, EnrichedAt).")
             .Produces<GetProfileResult>()
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapGet("/{profileId:guid}/history", GetProfileHistoryAsync)
             .WithName("GetProfileHistory")
             .WithSummary("Get change history and validations for a profile")
+            .WithDescription("Paged change events plus validation records. Change events carry severity classification used for notification routing.")
             .Produces<GetProfileHistoryResult>()
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         // B-65: enqueues the profile into IRevalidationQueue, drained by RevalidationScheduler.
@@ -43,7 +49,9 @@ internal static class ProfileEndpoints
         group.MapPost("/{profileId:guid}/revalidate", RevalidateProfileAsync)
             .WithName("RevalidateProfile")
             .WithSummary("Enqueue a CKB profile for immediate re-validation")
+            .WithDescription("Submits the profile into the bounded revalidation queue drained by RevalidationScheduler. Returns 429 if the queue is full.")
             .Produces(StatusCodes.Status202Accepted)
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status429TooManyRequests);
 

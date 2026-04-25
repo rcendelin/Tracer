@@ -25,26 +25,34 @@ internal static class TraceEndpoints
         group.MapPost("/", SubmitTraceAsync)
             .WithName("SubmitTrace")
             .WithSummary("Submit an enrichment request")
+            .WithDescription("Runs the waterfall synchronously and returns the enriched profile with per-field confidence scores. Depth controls provider coverage (Quick ≤ 5 s, Standard ≤ 15 s, Deep ≤ 30 s).")
             .Produces<TraceResultDto>(StatusCodes.Status201Created)
             .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
             .ProducesProblem(StatusCodes.Status500InternalServerError);
 
         group.MapGet("/{traceId:guid}", GetTraceResultAsync)
             .WithName("GetTraceResult")
             .WithSummary("Get trace result by ID")
+            .WithDescription("Poll endpoint for async (batch) submissions; also returns the stored result for sync traces.")
             .Produces<TraceResultDto>()
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapGet("/", ListTracesAsync)
             .WithName("ListTraces")
             .WithSummary("List trace requests with filters")
-            .Produces<PagedResult<TraceResultDto>>();
+            .WithDescription("Paged listing; filter by status, date range or free-text search over the original input.")
+            .Produces<PagedResult<TraceResultDto>>()
+            .ProducesProblem(StatusCodes.Status401Unauthorized);
 
         group.MapPost("/batch", SubmitBatchTraceAsync)
             .WithName("SubmitBatchTrace")
             .WithSummary("Submit a batch of enrichment requests for async processing via Service Bus")
+            .WithDescription("Persists all items in a single transaction, then publishes each to the `tracer-request` queue. Returns 202 with per-item TraceIds; callers poll GET /api/trace/{traceId}. Rate-limited: 5 req/min/IP.")
             .Produces<BatchTraceResultDto>(StatusCodes.Status202Accepted)
             .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
             .ProducesProblem(StatusCodes.Status429TooManyRequests)
             .ProducesProblem(StatusCodes.Status500InternalServerError)
             .RequireRateLimiting("batch");

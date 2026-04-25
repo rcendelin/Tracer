@@ -18,7 +18,9 @@ internal static class StatsEndpoints
         group.MapGet("/", GetDashboardStatsAsync)
             .WithName("GetDashboardStats")
             .WithSummary("Get dashboard statistics")
-            .Produces<DashboardStatsDto>();
+            .WithDescription("Rolling KPIs used by the Tracer UI landing page: traces today / this week, total CKB profiles, mean confidence.")
+            .Produces<DashboardStatsDto>()
+            .ProducesProblem(StatusCodes.Status401Unauthorized);
 
         return group;
     }
