@@ -8,6 +8,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Tracer.Application.Tests/Tracer.Application.Tests.csproj" />
+    <Project Path="tests/Tracer.Benchmarks/Tracer.Benchmarks.csproj" />
     <Project Path="tests/Tracer.Domain.Tests/Tracer.Domain.Tests.csproj" />
     <Project Path="tests/Tracer.Infrastructure.Tests/Tracer.Infrastructure.Tests.csproj" />
   </Folder>

@@ -359,6 +359,9 @@ Two modes: Lightweight (re-check only expired fields against primary registry) a
 - **Microsoft.OpenApi 1.x vs 2.x collection types** — `OpenApiDocument.Tags` is `IList<OpenApiTag>` in Microsoft.OpenApi 1.x but `ISet<OpenApiTag>` in 2.x (preview). `TracerOpenApiDocumentTransformer` populates `document.Tags` in place via `.Add(...)` instead of replacing the collection, so the same code compiles and works across the two preview surfaces ASP.NET Core preview ships against. `Components.SecuritySchemes` is similarly left to its auto-initialized state (do **not** reassign it). Rule of thumb for future transformers: never replace OpenApiDocument collections — mutate them in place.
 - **XML doc generation is Api-project-scoped** — `<GenerateDocumentationFile>true</GenerateDocumentationFile>` lives in `src/Tracer.Api/Tracer.Api.csproj`, NOT `Directory.Build.props`. Turning it on globally would demand XML docs on every internal helper in Domain / Application / Infrastructure (breaks build under `TreatWarningsAsErrors`). CS1591 is suppressed only inside Tracer.Api so `Program.cs` partial and unannotated private helpers do not fail the build; public endpoints, DTOs, commands and queries carry real `<summary>`.
 - **Scalar.AspNetCore UI gating** — Production hosts must set `OpenApi:EnableUi=true` to expose the interactive UI; otherwise only the raw spec is served. `appsettings.Development.json` sets `EnableUi=true` so `dotnet run` gives an out-of-the-box interactive explorer at `/scalar/v1`. Scalar loads its front-end assets from jsdelivr CDN; hosts with strict CSP requirements should self-host Scalar assets or gate the UI off entirely (follow-up for B-87 security hardening).
+- **Performance testing harness (B-86)** — Two complementary suites, both opt-in and never on the default CI path. (1) **BenchmarkDotNet** lives in `tests/Tracer.Benchmarks/` — a **console exe**, not a test project, so `dotnet test` never picks it up. Each benchmark class is `public` (BDN reflects on it), `[MemoryDiagnoser]`, and references only the **public** Application API — no `InternalsVisibleTo` back-channel, because the point is to measure the production surface. Add new benchmarks by dropping a class under `tests/Tracer.Benchmarks/Benchmarks/`; `BenchmarkSwitcher.FromAssembly(...)` auto-discovers them. (2) **k6 scripts** in `deploy/k6/` encode SLO thresholds inline (`options.thresholds`) so k6 exits non-zero on regression, making them usable as deploy gates. `deploy/scripts/run-benchmarks.sh` and `run-load-test.sh` fail fast on missing `BASE_URL` / `API_KEY`. `.github/workflows/perf.yml` is `workflow_dispatch`-only with `job = benchmarks | load-test | both`; `PERF_API_KEY` is a repo secret that the job verifies explicitly.
+- **Benchmark payload hygiene (B-86)** — k6 scripts **must not** submit real company names, phone numbers, addresses, or emails. Use deterministic fictitious values (`Contoso International Testing Ltd.`, `Load Test Company NNN`, `+420 000 000 000`, `example.invalid`) and a neutral country code. Reason: load tests hit the real waterfall, which writes to CKB and publishes to Service Bus — any real data would create fake golden records that would need GDPR erasure. Same rule for BenchmarkDotNet fixtures in `Fixtures/SampleData.cs`.
+- **Batch endpoint rate-limit in load tests (B-86)** — `batch-load.js` sleeps 12 s between iterations so 1 VU over 60 s produces exactly 5 requests — the ceiling of the `batch` rate-limit policy (5 req/min, `QueueLimit = 0`). Any future k6 script that targets `/api/trace/batch` must respect the same pacing; the limiter returns 429 immediately otherwise and thresholds read as errors even though the SUT is healthy.
 
 ## Git conventions
 
@@ -383,6 +386,12 @@ dotnet run
 # Smoke test Phase 2 (po deployi na Azure)
 ./deploy/scripts/smoke-test-phase2.sh https://tracer-test-api.azurewebsites.net <API_KEY>
 # Deployment runbook: deploy/DEPLOYMENT.md
+
+# Performance testing (B-86) — opt-in, neblokuje PR merge
+./deploy/scripts/run-benchmarks.sh                                                    # BenchmarkDotNet micro-benchmarks
+./deploy/scripts/run-benchmarks.sh "*FuzzyMatcher*"                                   # filtered subset
+./deploy/scripts/run-load-test.sh trace-smoke https://tracer-test-api... <API_KEY>    # k6 load test
+# Manual-dispatch: Actions → Performance (docs: docs/performance/README.md)
 
 # Frontend
 cd src/Tracer.Web
