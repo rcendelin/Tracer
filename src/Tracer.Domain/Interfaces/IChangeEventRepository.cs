@@ -102,4 +102,30 @@ public interface IChangeEventRepository
         DateTimeOffset? from = null,
         DateTimeOffset? to = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns per-month, per-severity counts of change events whose <c>DetectedAt</c>
+    /// falls inside <c>[fromInclusive, toExclusive)</c>. Rows for months / severities
+    /// with zero events are <em>not</em> returned — the caller is responsible for
+    /// filling empty buckets.
+    /// </summary>
+    /// <param name="fromInclusive">Inclusive lower bound (UTC).</param>
+    /// <param name="toExclusive">Exclusive upper bound (UTC).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<IReadOnlyList<ChangeTrendBucketRow>> GetMonthlyTrendAsync(
+        DateTimeOffset fromInclusive,
+        DateTimeOffset toExclusive,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// Single per-month, per-severity bucket returned by
+/// <see cref="IChangeEventRepository.GetMonthlyTrendAsync"/>.
+/// </summary>
+public sealed record ChangeTrendBucketRow
+{
+    public required int Year { get; init; }
+    public required int Month { get; init; }
+    public required ChangeSeverity Severity { get; init; }
+    public required int Count { get; init; }
 }

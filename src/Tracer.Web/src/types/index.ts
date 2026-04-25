@@ -166,6 +166,36 @@ export interface ValidationQueueItem {
   expiredFields: FieldName[];
 }
 
+export type TrendPeriod = 'Monthly';
+export type CoverageGroupBy = 'Country';
+
+export interface ChangeTrendBucket {
+  periodStart: string; // ISO date (YYYY-MM-DD)
+  critical: number;
+  major: number;
+  minor: number;
+  cosmetic: number;
+  total: number;
+}
+
+export interface ChangeTrend {
+  period: TrendPeriod;
+  months: number;
+  buckets: ChangeTrendBucket[];
+}
+
+export interface CoverageEntry {
+  group: string | null;
+  profileCount: number;
+  avgConfidence: number;
+  avgDataAgeDays: number;
+}
+
+export interface Coverage {
+  groupBy: CoverageGroupBy;
+  entries: CoverageEntry[];
+}
+
 export type TraceStatus = 'Pending' | 'InProgress' | 'Completed' | 'PartiallyCompleted' | 'Failed' | 'Cancelled' | 'Queued';
 export type TraceDepth = 'Quick' | 'Standard' | 'Deep';
 export type SourceStatus = 'Unknown' | 'Success' | 'NotFound' | 'Error' | 'Timeout' | 'Skipped';

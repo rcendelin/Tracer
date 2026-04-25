@@ -236,6 +236,39 @@ internal sealed class CompanyProfileRepository : ICompanyProfileRepository
             .ConfigureAwait(false);
     }
 
+    public async Task<IReadOnlyList<CoverageByCountryRow>> GetCoverageByCountryAsync(
+        DateTimeOffset now,
+        int maxCountries,
+        CancellationToken cancellationToken)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxCountries, nameof(maxCountries));
+
+        // Single-pass group-by aggregate. We project sums + sample counts and compute
+        // averages in the caller so profiles with null OverallConfidence / LastEnrichedAt
+        // do not skew the means. DATEDIFF(DAY, LastEnrichedAt, now) returns int; we cast
+        // to long before Sum() to avoid overflow on large datasets.
+        var nowUtc = now.UtcDateTime;
+        return await _db.CompanyProfiles
+            .AsNoTracking()
+            .Where(p => !p.IsArchived)
+            .GroupBy(p => p.Country)
+            .Select(g => new CoverageByCountryRow
+            {
+                Country = g.Key,
+                ProfileCount = g.Count(),
+                ConfidenceSampleCount = g.Count(p => EF.Property<double?>(p, "OverallConfidence") != null),
+                ConfidenceSum = g.Sum(p => EF.Property<double?>(p, "OverallConfidence")) ?? 0d,
+                EnrichedSampleCount = g.Count(p => p.LastEnrichedAt != null),
+                EnrichedSumDays = g.Sum(p => p.LastEnrichedAt == null
+                    ? 0L
+                    : (long)EF.Functions.DateDiffDay(p.LastEnrichedAt.Value.UtcDateTime, nowUtc)),
+            })
+            .OrderByDescending(r => r.ProfileCount)
+            .Take(maxCountries)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
 
     private static IQueryable<CompanyProfile> ApplyFilters(
         IQueryable<CompanyProfile> query,

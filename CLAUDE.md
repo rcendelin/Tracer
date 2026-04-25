@@ -179,6 +179,13 @@ GET    /api/validation/stats   Re-validation engine statistics
 GET    /api/validation/queue   Profiles pending validation
 ```
 
+### Analytics (aggregate-only)
+
+```
+GET    /api/analytics/changes?period=Monthly&months=12   Monthly change-event trend by severity
+GET    /api/analytics/coverage?groupBy=Country            Per-country coverage (profile count, avg confidence, avg data age)
+```
+
 ### SignalR Hub: `/hubs/trace`
 
 Events: `SourceCompleted`, `TraceCompleted`, `ChangeDetected`, `ValidationProgress`
@@ -380,6 +387,10 @@ Two modes: Lightweight (re-check only expired fields against primary registry) a
 - **Auto-unarchive on incoming trace** — `CkbPersistenceService.PersistEnrichmentAsync` checks `profile.IsArchived` at the top of the flow and, if set, calls `profile.Unarchive()` + `ITracerMetrics.RecordCkbUnarchived()` before any change detection. Silent — no domain event, no `ChangeEvent`; the subsequent `IncrementTraceCount()` is the signal that the profile is back in the active working set. The archival policy (`TraceCount ≤ 1`) then naturally excludes it on future sweeps. Race with a concurrent archival tick is bounded: if the trace wins, archival skips next tick (TraceCount ≥ 2); if archival wins, the in-memory profile still has `IsArchived = false` set by `Unarchive()` and the outer `Upsert` writes it back.
 - **`ExecuteUpdateAsync` + `Take(batchSize)` for batched maintenance updates** — EF Core 7+ translates `OrderBy(...).Take(N).ExecuteUpdateAsync(setters => ...)` to SQL Server as `UPDATE … WHERE Id IN (SELECT TOP(N) Id FROM … ORDER BY … )`. Use this pattern (not row-by-row `Update`) for silent maintenance operations that must not dispatch domain events — archival is the canonical example. Works despite private setters on the domain entity (EF reads column names from the expression, never calls the setter at runtime).
 - **CKB archival metrics — `tracer.ckb.archived` / `tracer.ckb.unarchived`** — `RecordCkbArchived(int count)` is called once per tick with the total rows transitioned (no-op when 0); `RecordCkbUnarchived()` per auto-unarchive event in `CkbPersistenceService`. Both are tag-less counters; separate them instead of using a `direction` tag so dashboards can independently alert on runaway growth of either side.
+- **Analytics endpoints — aggregate-only (B-84)** — `/api/analytics/changes` and `/api/analytics/coverage` return aggregated rows only (no per-profile / per-event payload), so no PII leaves the boundary and no row-level authorisation is needed beyond the standard API-key check. Handlers use the same testing seam as the background services (`internal Func<DateTimeOffset> NowProvider { get; init; }` with a static default) instead of introducing `TimeProvider` DI. Validators clamp the user-visible range (`Months ∈ [1..36]`) and the handler repeats the clamp defensively — never trust a query to have survived the pipeline. Enum query parameters (`TrendPeriod`, `CoverageGroupBy`) start with a single member each to reserve space for Weekly/Daily / Industry extensions without a breaking change.
+- **EF Core per-group aggregates — project sums, average in-memory** — For analytics group-by queries that mix nullable samples (`OverallConfidence`, `LastEnrichedAt`), project `SUM` + sample count from the database and compute the mean in the handler. EF Core's `.Average(...)` can collapse nulls surprisingly and occasionally fails to translate on Azure SQL. Cast any `EF.Functions.DateDiffDay` result to `long` before summing — SQL `DATEDIFF` returns int and will overflow at ~5.9 B day-rows. Hard-cap the number of returned groups in the repository (`Take(maxCountries)`) as a DoS guard; the current planet has ~200 ISO 3166-1 alpha-2 codes.
+- **Dense bucketing for time-series** — `GetMonthlyTrendAsync` returns only non-empty `(year, month, severity)` tuples. The handler pivots them into a `Dictionary<(year,month), counts>` then walks a month cursor from `fromInclusive` to `toExclusive` so the response contains explicit zeros for empty months. Without this the line chart would have gaps and the x-axis would compress; zero-backfill has to be done in handlers, not in SQL `UNION ALL` generators.
+- **React analytics widgets — `recharts` + per-widget `useQuery`** — `ChangesTrendChart` and `CoverageByCountryTable` own their data fetches with `staleTime: 5 * 60_000`; they are deliberately NOT invalidated on `ChangeDetected` SignalR events because the aggregate doesn't change fast enough to warrant rerenders on every event. Bundle size grew ~330 kB (recharts) → future follow-up: `React.lazy` code-split in B-88 UI polish. Month labels use string-slicing on the ISO date (`YYYY-MM-DD`) rather than `new Date()`-parsing so they don't shift based on the viewer's local timezone.
 
 ## Git conventions
 

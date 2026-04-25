@@ -11,6 +11,10 @@ import type {
   ChangeSeverity,
   ValidationStats,
   ValidationQueueItem,
+  ChangeTrend,
+  Coverage,
+  TrendPeriod,
+  CoverageGroupBy,
 } from '../types';
 
 const BASE_URL = '/api';
@@ -250,7 +254,23 @@ export const changesApi = {
 
 // Stats endpoints
 export const statsApi = {
-  dashboard: () => fetchApi<DashboardStats>('/stats'),
+  dashboard: (): Promise<DashboardStats> => fetchApi<DashboardStats>('/stats'),
+};
+
+// Analytics endpoints — aggregate-only responses, safe for dashboards.
+export const analyticsApi = {
+  changes: (params: { period?: TrendPeriod; months?: number } = {}): Promise<ChangeTrend> => {
+    const query = new URLSearchParams();
+    if (params.period) query.set('period', params.period);
+    if (params.months !== undefined) query.set('months', String(params.months));
+    return fetchApi<ChangeTrend>(`/analytics/changes?${query}`);
+  },
+
+  coverage: (params: { groupBy?: CoverageGroupBy } = {}): Promise<Coverage> => {
+    const query = new URLSearchParams();
+    if (params.groupBy) query.set('groupBy', params.groupBy);
+    return fetchApi<Coverage>(`/analytics/coverage?${query}`);
+  },
 };
 
 // Validation endpoints — re-validation engine dashboard (B-71)
