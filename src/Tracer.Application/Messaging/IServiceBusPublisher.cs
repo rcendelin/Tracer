@@ -20,10 +20,22 @@ public interface IServiceBusPublisher
 
     /// <summary>
     /// Publishes a change event to the <c>tracer-changes</c> topic.
-    /// Only <see cref="Tracer.Contracts.Enums.ChangeSeverity.Critical"/> and
-    /// <see cref="Tracer.Contracts.Enums.ChangeSeverity.Major"/> events are routed
-    /// to the default subscription; minor events require a custom subscription filter.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The publisher tags each message with <c>ApplicationProperties["Severity"]</c>;
+    /// topic subscriptions filter on that property:
+    /// </para>
+    /// <list type="bullet">
+    ///   <item><description><c>fieldforce-changes</c> — SQL filter <c>Severity='Critical' OR Severity='Major'</c>.</description></item>
+    ///   <item><description><c>monitoring-changes</c> — implicit <c>1=1</c> (receives everything published).</description></item>
+    /// </list>
+    /// <para>
+    /// Tracer callers never publish <see cref="Tracer.Contracts.Enums.ChangeSeverity.Cosmetic"/>
+    /// (log-only); <see cref="Tracer.Contracts.Enums.ChangeSeverity.Minor"/> goes to the topic so
+    /// monitoring sees it, while the FieldForce CRM does not.
+    /// </para>
+    /// </remarks>
     /// <param name="message">The change event message.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     Task PublishChangeEventAsync(ChangeEventMessage message, CancellationToken cancellationToken = default);

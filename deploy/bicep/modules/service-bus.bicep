@@ -65,7 +65,9 @@ resource changesTopic 'Microsoft.ServiceBus/namespaces/topics@2024-01-01' = {
   }
 }
 
-// Subscription: FieldForce consumes change notifications
+// Subscription: FieldForce consumes Critical/Major change notifications.
+// deadLetteringOnFilterEvaluationExceptions=true so a broken filter parks the
+// message in DLQ instead of silently dropping it (no observability otherwise).
 resource fieldforceSubscription 'Microsoft.ServiceBus/namespaces/topics/subscriptions@2024-01-01' = {
   parent: changesTopic
   name: 'fieldforce-changes'
@@ -74,6 +76,7 @@ resource fieldforceSubscription 'Microsoft.ServiceBus/namespaces/topics/subscrip
     lockDuration: 'PT1M'
     defaultMessageTimeToLive: 'P14D'
     deadLetteringOnMessageExpiration: true
+    deadLetteringOnFilterEvaluationExceptions: true
     // defaultRuleDescription is not available — $Default rule is removed by overriding
     // with a named rule that replaces it (see below).
   }
@@ -89,6 +92,24 @@ resource severityFilter 'Microsoft.ServiceBus/namespaces/topics/subscriptions/ru
     sqlFilter: {
       sqlExpression: 'Severity = \'Critical\' OR Severity = \'Major\''
     }
+  }
+}
+
+// Subscription: internal monitoring/observability — receives ALL severities that
+// Tracer publishes to the topic (Critical/Major/Minor). Cosmetic changes are
+// intentionally never published to the topic (log-only), so monitoring never sees them.
+// Higher maxDeliveryCount tolerates transient monitoring-tool outages; TTL matches
+// fieldforce subscription so ops have the same retention window.
+resource monitoringSubscription 'Microsoft.ServiceBus/namespaces/topics/subscriptions@2024-01-01' = {
+  parent: changesTopic
+  name: 'monitoring-changes'
+  properties: {
+    maxDeliveryCount: 10
+    lockDuration: 'PT1M'
+    defaultMessageTimeToLive: 'P14D'
+    deadLetteringOnMessageExpiration: true
+    deadLetteringOnFilterEvaluationExceptions: true
+    // No $Default override — Azure's implicit 1=1 TrueFilter matches every message.
   }
 }
 

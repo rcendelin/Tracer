@@ -187,7 +187,20 @@ Events: `SourceCompleted`, `TraceCompleted`, `ChangeDetected`, `ValidationProgre
 
 - Queue `tracer-request` — inbound enrichment requests
 - Queue `tracer-response` — outbound enrichment results
-- Topic `tracer-changes` — change event notifications (default subscription: Critical + Major only)
+- Topic `tracer-changes` — change event notifications
+  - Subscription `fieldforce-changes` — SQL filter `Severity='Critical' OR Severity='Major'` (default FieldForce feed)
+  - Subscription `monitoring-changes` — implicit `1=1` TrueFilter (receives every published severity; Cosmetic is log-only and never published)
+
+**Severity → publish matrix** (authoritative — `FieldChangedNotificationHandler` + `CriticalChangeNotificationHandler`):
+
+| Severity | Service Bus | SignalR | Log | fieldforce-changes | monitoring-changes |
+|---|---|---|---|---|---|
+| Critical | ✅ (Critical handler) | ✅ | ✅ | ✅ | ✅ |
+| Major | ✅ (Field handler) | ✅ | ✅ | ✅ | ✅ |
+| Minor | ✅ (Field handler) | ❌ (UI polls) | ✅ | ❌ (filter drops) | ✅ |
+| Cosmetic | ❌ | ❌ | ✅ | — | — |
+
+Both subscriptions set `deadLetteringOnFilterEvaluationExceptions: true` so a broken rule parks the message in DLQ instead of silently dropping it. `monitoring-changes` has `maxDeliveryCount: 10` vs fieldforce's 5 to tolerate transient consumer outages.
 
 Message contracts are defined in `Tracer.Contracts` (standalone NuGet, zero external dependencies, multi-targets net8.0+net10.0). FieldForce references only this package. Application uses `global using` aliases from `Application/Messaging/TraceRequestMessage.cs`. `ContractMappingExtensions` maps between Application DTOs and Contracts types using `MapEnum<TSource,TTarget>` with `Enum.IsDefined` validation to catch enum drift at runtime.
 
@@ -327,6 +340,9 @@ Two modes: Lightweight (re-check only expired fields against primary registry) a
 - **Shadow-property aggregates on `CompanyProfile` (B-91)** — `OverallConfidence` is a `Confidence?` value object exposed through a shadow property via an explicit `ValueConverter<Confidence?, double?>`. The canonical aggregate pattern is `query.Select(p => EF.Property<double?>(p, "OverallConfidence")).AverageAsync(ct)`, which EF Core translates to `AVG([OverallConfidence])` — SQL Server's `AVG` ignores NULLs. The return type is `double?`; always null-coalesce to `0.0` at the repository boundary so callers never see `null` and the dashboard can treat `0.0` as the "no data" signal (the React side already renders a dash for it). Same pattern should be used for any future aggregate over a VO-backed column.
 - **ChangeEvent JSON payloads are not the PII boundary (B-91)** — `ChangeEvent.PreviousValueJson` / `NewValueJson` are the last-mile persistence, but the GDPR boundary is **upstream** in `WaterfallOrchestrator`, which strips personal-data fields via `IGdprPolicy.PersonalDataFields` before `CompanyProfile.UpdateField()` ever runs. When adding a new personal-data field, register it in `GdprPolicy.Classify()` — do NOT add field-level redaction in `ChangeEvent` or the JSON serializer. Double-handling creates two sources of truth and drift-risk.
 - **Test coverage baseline & gap doc (B-91)** — `docs/testing/coverage-baseline.md` tracks the canonical release-candidate test snapshot: per-project source LOC, test file / test-method counts, plus an explicit gap table (Query handlers without fixtures, repositories without a DbContext integration harness, Redis / frontend gaps). Update it whenever the numbers drift materially or a gap is closed; the reproduction commands at the top of the file are the single source of truth for how to measure.
+- **Change-event topic routing (B-74)** — Two subscriptions on `tracer-changes`: `fieldforce-changes` (SQL filter `Severity='Critical' OR Severity='Major'`) and `monitoring-changes` (implicit `1=1` TrueFilter; no `$Default` override). `CriticalChangeNotificationHandler` publishes Critical; `FieldChangedNotificationHandler` publishes Major + Minor and is explicitly early-returned for Critical to avoid double-publish (both events fire for the same change — `CompanyProfile.UpdateField` raises `FieldChangedEvent` always + `CriticalChangeDetectedEvent` for Critical). Cosmetic is never published (log-only — would swamp monitoring with no business value). SignalR push is reserved for Critical + Major; Minor is polled from `/api/changes`. Severity string used for routing is `enum.ToString()` — Contracts and Domain enum member names must stay aligned (enforced by `MapEnum<,>`).
+- **Service Bus DLQ flags** — Every subscription and queue that can receive messages must set `deadLetteringOnMessageExpiration: true` AND `deadLetteringOnFilterEvaluationExceptions: true` on subscriptions. The filter-exception flag is the non-obvious one: without it a malformed SQL filter silently drops messages with no telemetry. See `deploy/bicep/modules/service-bus.bicep` — both `fieldforce-changes` and `monitoring-changes` have both flags set. `monitoring-changes` uses `maxDeliveryCount: 10` (vs 5 for fieldforce) to tolerate transient monitoring-tool outages since those consumers are internal and lower-criticality.
+- **`ChangeEventSubscriptionRoutingTests` pattern (B-74)** — Integration-style unit test that mirrors the Bicep SQL filter as a `Predicate<string>` in code and drives real handlers through a capturing `IServiceBusPublisher`. Acts as a drift detector: if either the Bicep filter or `ServiceBusPublisher.PublishChangeEventAsync` (which sets `ApplicationProperties["Severity"] = severity.ToString()`) changes, the test fails. Same pattern should apply to any future topic where routing semantics live in both infra and code — keep the test at the Application layer, not Infrastructure, so it runs on every CI build without a live Service Bus.
 
 ## Git conventions
 
