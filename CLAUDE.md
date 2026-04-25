@@ -1,5 +1,10 @@
 # Tracer — Company Data Enrichment Engine
 
+> **Human-readable docs (B-90):** Start at [`docs/README.md`](./docs/README.md)
+> for the architecture overview, provider catalogue, configuration reference,
+> operations handbook, troubleshooting guide, and Architecture Decision
+> Records. `CLAUDE.md` (this file) stays LLM-targeted; `docs/` is for humans.
+
 ## Project overview
 
 Tracer is a standalone .NET 10 microservice that enriches partial company information (name, phone, address, registration ID, industry hint) into comprehensive company profiles using free public data sources, web scraping, and AI extraction. It sits alongside FieldForce (CRM for industrial/agricultural sector) and communicates via REST API (sync) and Azure Service Bus (async).
