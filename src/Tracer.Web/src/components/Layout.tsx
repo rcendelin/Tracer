@@ -4,6 +4,7 @@ import { useSignalR } from '../hooks/useSignalR';
 import { useChangeFeedLiveUpdates } from '../hooks/useChanges';
 import { useGlobalToasts } from '../hooks/useGlobalToasts';
 import { useMediaQuery } from '../hooks/useMediaQuery';
+import { useValidationLiveUpdates } from '../hooks/useValidation';
 import { ConnectionStatusBadge } from './ConnectionStatusBadge';
 
 const navItems = [
@@ -12,18 +13,20 @@ const navItems = [
   { to: '/trace/new', label: 'New Trace', icon: '➕' },
   { to: '/profiles', label: 'Profiles', icon: '🏢' },
   { to: '/changes', label: 'Change Feed', icon: '🔔' },
+  { to: '/validation', label: 'Validation', icon: '✅' },
 ];
 
 export function Layout() {
   // Initialise the shared SignalR connection at layout level so it stays
   // alive for the entire session and is available to all child pages.
-  const { connectionState, onChangeDetected, onTraceCompleted } = useSignalR();
+  const { connectionState, onChangeDetected, onTraceCompleted, onValidationProgress } = useSignalR();
 
-  // Invalidate change-feed query cache when a change arrives via SignalR.
-  // Calling useChangeFeedLiveUpdates here (rather than in ChangeFeedPage)
-  // avoids creating a second useSignalR() consumer and the lifecycle-handler
-  // conflicts that would cause.
+  // Invalidate change-feed and validation caches when SignalR pushes events.
+  // Calling these hooks here (rather than in their pages) avoids creating
+  // second useSignalR() consumers and the lifecycle-handler conflicts that
+  // would cause — the singleton pattern requires a single owner.
   useChangeFeedLiveUpdates(onChangeDetected);
+  useValidationLiveUpdates(onValidationProgress);
 
   // Global toasts for TraceCompleted and Critical/Major ChangeDetected.
   // Mounted here so the user sees a notification regardless of page.

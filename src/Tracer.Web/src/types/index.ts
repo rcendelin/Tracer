@@ -146,6 +146,26 @@ export interface ChangeStats {
   cosmeticCount: number;
 }
 
+export interface ValidationStats {
+  pendingCount: number;
+  processedToday: number;
+  changesDetectedToday: number;
+  averageDataAgeDays: number;
+}
+
+export interface ValidationQueueItem {
+  profileId: string;
+  normalizedKey: string;
+  country: string;
+  registrationId?: string;
+  legalName?: string;
+  traceCount: number;
+  overallConfidence?: number;
+  lastValidatedAt?: string;
+  nextFieldExpiryDate?: string;
+  expiredFields: FieldName[];
+}
+
 export type TraceStatus = 'Pending' | 'InProgress' | 'Completed' | 'PartiallyCompleted' | 'Failed' | 'Cancelled' | 'Queued';
 export type TraceDepth = 'Quick' | 'Standard' | 'Deep';
 export type SourceStatus = 'Unknown' | 'Success' | 'NotFound' | 'Error' | 'Timeout' | 'Skipped';

@@ -9,6 +9,8 @@ import type {
   ChangeEvent,
   ChangeStats,
   ChangeSeverity,
+  ValidationStats,
+  ValidationQueueItem,
 } from '../types';
 
 const BASE_URL = '/api';
@@ -126,4 +128,19 @@ export const changesApi = {
 // Stats endpoints
 export const statsApi = {
   dashboard: () => fetchApi<DashboardStats>('/stats'),
+};
+
+// Validation endpoints — re-validation engine dashboard (B-71)
+export const validationApi = {
+  stats: () => fetchApi<ValidationStats>('/validation/stats'),
+
+  queue: (params: { page?: number; pageSize?: number } = {}) => {
+    const query = new URLSearchParams();
+    if (params.page !== undefined) query.set('page', String(params.page));
+    if (params.pageSize !== undefined) query.set('pageSize', String(params.pageSize));
+    return fetchApi<PagedResult<ValidationQueueItem>>(`/validation/queue?${query}`);
+  },
+
+  revalidate: (profileId: string) =>
+    fetchApi<string>(`/profiles/${profileId}/revalidate`, { method: 'POST' }),
 };

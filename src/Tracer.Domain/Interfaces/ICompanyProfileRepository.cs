@@ -121,4 +121,26 @@ public interface ICompanyProfileRepository
     Task<double> GetAverageConfidenceAsync(
         bool includeArchived = false,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Counts non-archived company profiles considered candidates for the
+    /// re-validation queue. Mirrors the filter used by
+    /// <see cref="GetRevalidationQueueAsync"/>; a caller still has to apply
+    /// per-field TTL filtering from <c>IFieldTtlPolicy</c>, but this count
+    /// is a reasonable upper bound for dashboard purposes and avoids loading
+    /// profile payloads just to count them.
+    /// </summary>
+    Task<int> CountRevalidationCandidatesAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns the average age (in fractional days) of the <see cref="CompanyProfile.LastValidatedAt"/>
+    /// timestamp across non-archived profiles. Profiles that have never been
+    /// validated fall back to <see cref="CompanyProfile.CreatedAt"/>. Returns
+    /// <c>0</c> when there are no non-archived profiles.
+    /// </summary>
+    /// <param name="now">Reference moment used to compute the age.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<double> AverageDaysSinceLastValidationAsync(
+        DateTimeOffset now,
+        CancellationToken cancellationToken = default);
 }

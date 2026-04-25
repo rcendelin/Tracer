@@ -148,6 +148,45 @@ internal sealed class CompanyProfileRepository : ICompanyProfileRepository
         return average ?? 0.0;
     }
 
+    public async Task<int> CountRevalidationCandidatesAsync(CancellationToken cancellationToken)
+    {
+        return await _db.CompanyProfiles
+            .AsNoTracking()
+            .Where(p => !p.IsArchived)
+            .CountAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async Task<double> AverageDaysSinceLastValidationAsync(
+        DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        // EF Core cannot translate DateTimeOffset subtraction to SQL for all providers,
+        // so we pull the two timestamps and compute the age client-side. Because this is
+        // bounded by the number of non-archived profiles and is a dashboard-only query,
+        // the round-trip cost is acceptable; a production-scale replacement would move
+        // this to a pre-aggregated column or a materialised view.
+        var rows = await _db.CompanyProfiles
+            .AsNoTracking()
+            .Where(p => !p.IsArchived)
+            .Select(p => new { p.LastValidatedAt, p.CreatedAt })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        if (rows.Count == 0)
+            return 0;
+
+        double totalDays = 0;
+        foreach (var row in rows)
+        {
+            var reference = row.LastValidatedAt ?? row.CreatedAt;
+            var age = (now - reference).TotalDays;
+            if (age < 0) age = 0;
+            totalDays += age;
+        }
+
+        return totalDays / rows.Count;
+    }
+
     private static IQueryable<CompanyProfile> ApplyFilters(
         IQueryable<CompanyProfile> query,
         string? search, string? country, double? minConfidence, double? maxConfidence,

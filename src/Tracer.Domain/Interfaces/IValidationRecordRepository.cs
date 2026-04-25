@@ -20,4 +20,12 @@ public interface IValidationRecordRepository
     /// <param name="pageSize">Number of items per page.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     Task<IReadOnlyCollection<ValidationRecord>> ListByProfileAsync(Guid companyProfileId, int page, int pageSize, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Counts validation records whose <see cref="ValidationRecord.ValidatedAt"/> is
+    /// greater than or equal to <paramref name="since"/>.
+    /// </summary>
+    /// <param name="since">Inclusive lower bound. Typically start-of-day UTC.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<int> CountSinceAsync(DateTimeOffset since, CancellationToken cancellationToken = default);
 }
