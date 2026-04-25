@@ -34,12 +34,16 @@ public sealed class GetDashboardStatsHandler : IRequestHandler<GetDashboardStats
         var totalProfiles = await _profileRepo.CountAsync(
             cancellationToken: cancellationToken).ConfigureAwait(false);
 
+        var averageConfidence = await _profileRepo
+            .GetAverageConfidenceAsync(cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+
         return new DashboardStatsDto
         {
             TracesToday = tracesToday,
             TracesThisWeek = tracesThisWeek,
             TotalProfiles = totalProfiles,
-            AverageConfidence = 0.0, // TODO: aggregate query on CompanyProfiles
+            AverageConfidence = averageConfidence,
         };
     }
 }

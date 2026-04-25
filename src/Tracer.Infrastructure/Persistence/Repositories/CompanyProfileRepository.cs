@@ -115,6 +115,25 @@ internal sealed class CompanyProfileRepository : ICompanyProfileRepository
         return await query.CountAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task<double> GetAverageConfidenceAsync(
+        bool includeArchived,
+        CancellationToken cancellationToken)
+    {
+        // Shadow property "OverallConfidence" maps the Confidence value object to a nullable double column;
+        // SQL Server AVG ignores NULLs, so EF Core translates this to `AVG([OverallConfidence])` with
+        // NULL handling built in. The outer null-coalesce catches the empty-set case where AVG returns NULL.
+        var query = _db.CompanyProfiles.AsNoTracking();
+        if (!includeArchived)
+            query = query.Where(p => !p.IsArchived);
+
+        var average = await query
+            .Select(p => EF.Property<double?>(p, "OverallConfidence"))
+            .AverageAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return average ?? 0.0;
+    }
+
     private static IQueryable<CompanyProfile> ApplyFilters(
         IQueryable<CompanyProfile> query,
         string? search, string? country, double? minConfidence, double? maxConfidence,
