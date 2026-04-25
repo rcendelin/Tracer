@@ -47,12 +47,19 @@ namespace Tracer.Infrastructure.BackgroundJobs;
 internal sealed partial class RevalidationScheduler : BackgroundService
 {
     private static readonly TimeSpan PerProfileTimeout = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan ProgressUpdateMinInterval = TimeSpan.FromSeconds(2);
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IRevalidationQueue _manualQueue;
     private readonly ITracerMetrics _metrics;
     private readonly RevalidationOptions _options;
     private readonly ILogger<RevalidationScheduler> _logger;
+
+    /// <summary>
+    /// Last wall-clock time a `ValidationProgress` SignalR event was emitted.
+    /// Field-level rate limit so a 100-profile tick does not flood the hub.
+    /// </summary>
+    private DateTimeOffset _lastProgressSentAt = DateTimeOffset.MinValue;
 
     public RevalidationScheduler(
         IServiceScopeFactory scopeFactory,
@@ -181,11 +188,23 @@ internal sealed partial class RevalidationScheduler : BackgroundService
         await using var scope = _scopeFactory.CreateAsyncScope();
 #pragma warning restore CA2007
         var repository = scope.ServiceProvider.GetRequiredService<ICompanyProfileRepository>();
+        // Notification service is Scoped, but the underlying IHubContext is Singleton —
+        // resolving inside the same scope as the repository is safe and matches the
+        // CkbPersistenceService DI pattern.
+        var notifications = scope.ServiceProvider.GetRequiredService<ITraceNotificationService>();
 
         var candidates = await repository
             .GetRevalidationQueueAsync(budget, cancellationToken)
             .ConfigureAwait(false);
 
+        var totalCandidates = candidates.Count;
+
+        // Always emit the initial frame so the dashboard immediately reflects the
+        // tick has started (even if it's empty — `(0, 0)` is the "idle" signal).
+        await PublishValidationProgressAsync(notifications, processed: 0, remaining: totalCandidates,
+            force: true, cancellationToken).ConfigureAwait(false);
+
+        var processedCount = 0;
         foreach (var profile in candidates)
         {
             if (cancellationToken.IsCancellationRequested)
@@ -196,14 +215,64 @@ internal sealed partial class RevalidationScheduler : BackgroundService
             if (!profile.NeedsRevalidation())
             {
                 stats.Skipped++;
-                continue;
+            }
+            else
+            {
+                var outcome = await ProcessProfileAsync(profile, cancellationToken).ConfigureAwait(false);
+                stats.Record(outcome);
             }
 
-            var outcome = await ProcessProfileAsync(profile, cancellationToken).ConfigureAwait(false);
-            stats.Record(outcome);
+            processedCount++;
+            await PublishValidationProgressAsync(notifications, processedCount,
+                totalCandidates - processedCount, force: false, cancellationToken).ConfigureAwait(false);
+        }
+
+        // Final frame — guarantees the dashboard sees `remaining = 0` even if the
+        // last per-profile update was rate-limited away.
+        if (totalCandidates > 0)
+        {
+            await PublishValidationProgressAsync(notifications, processedCount, remaining: 0,
+                force: true, cancellationToken).ConfigureAwait(false);
         }
 
         return stats;
+    }
+
+    /// <summary>
+    /// Emits a `ValidationProgress` SignalR event, rate-limited to one update
+    /// per <see cref="ProgressUpdateMinInterval"/> unless <paramref name="force"/>
+    /// is set (used for the first and last frame of a tick). Failures are
+    /// swallowed and logged — re-validation must not be blocked by SignalR
+    /// transport issues.
+    /// </summary>
+    private async Task PublishValidationProgressAsync(
+        ITraceNotificationService notifications,
+        int processed,
+        int remaining,
+        bool force,
+        CancellationToken cancellationToken)
+    {
+        var now = Clock();
+        if (!force && now - _lastProgressSentAt < ProgressUpdateMinInterval)
+            return;
+
+        try
+        {
+            await notifications.NotifyValidationProgressAsync(processed, remaining, cancellationToken)
+                .ConfigureAwait(false);
+            _lastProgressSentAt = now;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Host shutdown during SignalR send — propagate.
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // CWE-209 — log only the exception type, never the message
+            // (SignalR transport errors can echo connection-string fragments).
+            LogProgressNotificationFailed(ex.GetType().Name);
+        }
     }
 
     private async Task<RevalidationOutcome> ProcessProfileByIdAsync(Guid profileId, CancellationToken cancellationToken)
@@ -323,4 +392,8 @@ internal sealed partial class RevalidationScheduler : BackgroundService
     [LoggerMessage(Level = LogLevel.Error,
         Message = "Revalidation: profile {ProfileId} failed ({ExceptionType})")]
     private partial void LogProfileFailed(Exception ex, Guid profileId, string exceptionType);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Revalidation: ValidationProgress SignalR push failed ({ExceptionType})")]
+    private partial void LogProgressNotificationFailed(string exceptionType);
 }

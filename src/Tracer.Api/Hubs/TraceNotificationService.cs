@@ -78,4 +78,19 @@ internal sealed class TraceNotificationService : ITraceNotificationService
             .SendAsync("ChangeDetected", changeEvent, cancellationToken)
             .ConfigureAwait(false);
     }
+
+    public async Task NotifyValidationProgressAsync(
+        int profilesProcessed, int profilesRemaining, CancellationToken cancellationToken)
+    {
+        // Broadcast to all clients — the validation dashboard is a shared monitoring
+        // surface. Caller (RevalidationScheduler) rate-limits to ~1 update / 2 s.
+        await _hubContext.Clients
+            .All
+            .SendAsync("ValidationProgress", new
+            {
+                profilesProcessed,
+                profilesRemaining,
+            }, cancellationToken)
+            .ConfigureAwait(false);
+    }
 }
