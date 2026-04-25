@@ -152,6 +152,18 @@ builder.Services.AddOptions<Tracer.Application.Services.DeepRevalidationOptions>
         "Revalidation:Deep:Threshold must be at least 1.")
     .ValidateOnStart();
 
+// Lightweight re-validation (B-66) — composite runner dispatches lightweight ↔ deep
+// using this Threshold. Threshold ≥ 0 is required; 0 means "lightweight is only used
+// when there are no expired fields", which is effectively no-op. The composite will
+// then go deep for any expired field. Set Enabled=false to disable lightweight entirely
+// (composite always goes deep — pre-B-66 behaviour).
+builder.Services.AddOptions<Tracer.Application.Services.LightweightRevalidationOptions>()
+    .Bind(builder.Configuration.GetSection(Tracer.Application.Services.LightweightRevalidationOptions.SectionName))
+    .Validate(
+        o => o.Threshold >= 0,
+        "Revalidation:Lightweight:Threshold must be ≥ 0.")
+    .ValidateOnStart();
+
 var revalidationEnabled = builder.Configuration
     .GetSection(Tracer.Application.Services.RevalidationOptions.SectionName)
     .GetValue<bool?>("Enabled") ?? true;
