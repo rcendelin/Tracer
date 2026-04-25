@@ -25,6 +25,18 @@ public sealed class EntityResolver : IEntityResolver
     /// <summary>Maximum number of CKB profiles loaded as fuzzy-match candidates per request.</summary>
     private const int MaxFuzzyCandidates = 100;
 
+    /// <summary>
+    /// B-95 blocking: minimum <c>TraceCount</c> a profile must have to enter the cheap first pass.
+    /// Picks "business-important" profiles popular companies are very likely to land on.
+    /// </summary>
+    private const int BlockingMinTraceCount = 5;
+
+    /// <summary>
+    /// B-95 blocking: cap on the number of high-traced profiles scored in the first pass.
+    /// Keeps fuzzy work O(small) for the common case of duplicates against hot profiles.
+    /// </summary>
+    private const int BlockingMaxCandidates = 25;
+
     private readonly ICompanyProfileRepository _profileRepository;
     private readonly ICompanyNameNormalizer _normalizer;
     private readonly IFuzzyNameMatcher _fuzzyMatcher;
@@ -166,27 +178,55 @@ public sealed class EntityResolver : IEntityResolver
             .ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// B-95 two-pass blocking: pass 1 scores only the small set of high-traced ("hot") profiles;
+    /// if it produces a high-confidence match the wider scan is skipped. Pass 2 falls back to
+    /// the full <see cref="MaxFuzzyCandidates"/> pool when the cheap pass is inconclusive.
+    /// </summary>
     private async Task<List<FuzzyMatchCandidate>> ScoreCandidatesAsync(
         string companyName, string country, CancellationToken cancellationToken)
     {
-        var candidates = await _profileRepository
+        var normalizedQuery = _normalizer.Normalize(companyName);
+        var seen = new HashSet<Guid>();
+        var scored = new List<FuzzyMatchCandidate>();
+
+        // Pass 1 — blocking: high-traced profiles only.
+        var hotCandidates = await _profileRepository
+            .ListByCountryAsync(country, BlockingMaxCandidates, BlockingMinTraceCount, cancellationToken)
+            .ConfigureAwait(false);
+
+        AddScoredCandidates(scored, seen, hotCandidates, normalizedQuery);
+
+        // Short-circuit: a confident match in the hot set means the wider scan can't change the outcome.
+        if (scored.Any(c => c.Score >= HighConfidenceThreshold))
+            return scored;
+
+        // Pass 2 — fallback: wider pool (no minTraceCount). Defensive cap mirrors the repository's
+        // own cap — if a future regression drops it, we still refuse to score an unbounded set.
+        var widerCandidates = await _profileRepository
             .ListByCountryAsync(country, MaxFuzzyCandidates, cancellationToken)
             .ConfigureAwait(false);
 
-        if (candidates.Count == 0)
-            return [];
+        var bounded = widerCandidates.Count <= MaxFuzzyCandidates
+            ? widerCandidates
+            : widerCandidates.Take(MaxFuzzyCandidates).ToList();
 
-        // Defensive cap: the repository is expected to honour `MaxFuzzyCandidates`, but if a future
-        // regression removes that cap, we still refuse to score an unbounded set in memory (DoS guard).
-        var bounded = candidates.Count <= MaxFuzzyCandidates
-            ? candidates
-            : candidates.Take(MaxFuzzyCandidates).ToList();
+        AddScoredCandidates(scored, seen, bounded, normalizedQuery);
 
-        var normalizedQuery = _normalizer.Normalize(companyName);
-        var scored = new List<FuzzyMatchCandidate>(bounded.Count);
+        return scored;
+    }
 
-        foreach (var candidate in bounded)
+    private void AddScoredCandidates(
+        List<FuzzyMatchCandidate> scored,
+        HashSet<Guid> seen,
+        IReadOnlyCollection<CompanyProfile> candidates,
+        string normalizedQuery)
+    {
+        foreach (var candidate in candidates)
         {
+            if (!seen.Add(candidate.Id))
+                continue;
+
             var candidateName = candidate.LegalName?.Value;
             if (string.IsNullOrWhiteSpace(candidateName))
                 continue;
@@ -195,8 +235,6 @@ public sealed class EntityResolver : IEntityResolver
             var score = _fuzzyMatcher.Score(normalizedQuery, normalizedCandidate);
             scored.Add(new FuzzyMatchCandidate(candidate, score));
         }
-
-        return scored;
     }
 
     private static string ComputeHash(string input)

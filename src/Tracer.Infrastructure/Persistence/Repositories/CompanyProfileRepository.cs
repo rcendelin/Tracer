@@ -103,6 +103,22 @@ internal sealed class CompanyProfileRepository : ICompanyProfileRepository
             .ConfigureAwait(false);
     }
 
+    public async Task<IReadOnlyCollection<CompanyProfile>> ListByCountryAsync(
+        string country, int maxCount, int minTraceCount, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(country, nameof(country));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxCount, nameof(maxCount));
+        ArgumentOutOfRangeException.ThrowIfNegative(minTraceCount, nameof(minTraceCount));
+
+        return await _db.CompanyProfiles
+            .AsNoTracking()
+            .Where(p => !p.IsArchived && p.Country == country && p.TraceCount >= minTraceCount)
+            .OrderByDescending(p => p.TraceCount)
+            .Take(maxCount)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     public async Task<IReadOnlyCollection<CompanyProfile>> ListTopByTraceCountAsync(
         int maxCount, CancellationToken cancellationToken)
     {

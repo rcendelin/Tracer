@@ -533,4 +533,95 @@ public sealed class EntityResolverTests
             Arg.Any<IReadOnlyList<FuzzyMatchCandidate>>(),
             Arg.Any<CancellationToken>());
     }
+
+    // ── ResolveAsync — B-95 two-pass blocking ─────────────────────────
+
+    [Fact]
+    public async Task ResolveAsync_HighConfidenceInHotSet_SkipsWiderScan()
+    {
+        // Pass 1 (4-arg overload, minTraceCount filter) returns a hot match that scores ≥ 0.85.
+        // Pass 2 (3-arg overload, full pool) must NOT be invoked.
+        var hot = ProfileWithName(
+            normalizedKey: "NAME:CZ:hot",
+            country: "CZ",
+            legalName: "KOVÁŘOVA FARMA s.r.o.",
+            traceCount: 50);
+
+        _repo.ListByCountryAsync("CZ", Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(new[] { hot });
+
+        var sut = CreateSut();
+
+        var result = await sut.ResolveAsync(new TraceRequestDto
+        {
+            CompanyName = "Kovářova farma",
+            Country = "CZ",
+        }, CancellationToken.None);
+
+        result.Should().Be(hot);
+        await _repo.DidNotReceive().ListByCountryAsync(
+            Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ResolveAsync_HotSetEmpty_FallsBackToWiderScan()
+    {
+        // Pass 1 finds nothing (no hot profiles match), pass 2 picks up the candidate.
+        var cold = ProfileWithName(
+            normalizedKey: "NAME:CZ:cold",
+            country: "CZ",
+            legalName: "KOVÁŘOVA FARMA s.r.o.",
+            traceCount: 0);
+
+        _repo.ListByCountryAsync("CZ", Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(Array.Empty<CompanyProfile>());
+        _repo.ListByCountryAsync("CZ", Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(new[] { cold });
+
+        var sut = CreateSut();
+
+        var result = await sut.ResolveAsync(new TraceRequestDto
+        {
+            CompanyName = "Kovářova farma",
+            Country = "CZ",
+        }, CancellationToken.None);
+
+        result.Should().Be(cold);
+        await _repo.Received(1).ListByCountryAsync(
+            "CZ", Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
+        await _repo.Received(1).ListByCountryAsync(
+            "CZ", Arg.Any<int>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ResolveAsync_HotSetNotConfident_DedupesWithWiderScan()
+    {
+        // Hot profile has insufficient match (< 0.85); pass 2 includes the same profile by ID
+        // plus another. Resolver must not double-score the hot profile.
+        var hot = ProfileWithName(
+            normalizedKey: "NAME:CZ:hot",
+            country: "CZ",
+            legalName: "ACME HOLDING",
+            traceCount: 50);
+        var strongMatch = ProfileWithName(
+            normalizedKey: "NAME:CZ:strong",
+            country: "CZ",
+            legalName: "KOVÁŘOVA FARMA s.r.o.",
+            traceCount: 0);
+
+        _repo.ListByCountryAsync("CZ", Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(new[] { hot });
+        _repo.ListByCountryAsync("CZ", Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(new[] { hot, strongMatch });
+
+        var sut = CreateSut();
+
+        var result = await sut.ResolveAsync(new TraceRequestDto
+        {
+            CompanyName = "Kovářova farma",
+            Country = "CZ",
+        }, CancellationToken.None);
+
+        result.Should().Be(strongMatch);
+    }
 }

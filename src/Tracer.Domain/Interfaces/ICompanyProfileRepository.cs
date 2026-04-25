@@ -85,6 +85,22 @@ public interface ICompanyProfileRepository
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// B-95: Same as <see cref="ListByCountryAsync(string, int, CancellationToken)"/>
+    /// but with an explicit blocking pre-filter on <c>TraceCount</c>. The entity
+    /// resolver uses this to do a cheap first pass over the most business-important
+    /// profiles before falling back to a wider search — keeping fuzzy scoring O(small).
+    /// </summary>
+    /// <param name="country">ISO 3166-1 alpha-2 country code.</param>
+    /// <param name="maxCount">Maximum number of profiles to return.</param>
+    /// <param name="minTraceCount">Inclusive lower bound on <c>TraceCount</c>.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<IReadOnlyCollection<CompanyProfile>> ListByCountryAsync(
+        string country,
+        int maxCount,
+        int minTraceCount,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Returns the top non-archived profiles across all countries, ordered by
     /// <c>TraceCount</c> descending. Used by the B-79 cache-warming background
     /// service to pre-populate the distributed cache with the hottest profiles.

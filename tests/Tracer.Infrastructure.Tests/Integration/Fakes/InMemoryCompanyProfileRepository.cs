@@ -87,6 +87,19 @@ internal sealed class InMemoryCompanyProfileRepository : ICompanyProfileReposito
         return Task.FromResult(result);
     }
 
+    public Task<IReadOnlyCollection<CompanyProfile>> ListByCountryAsync(
+        string country, int maxCount, int minTraceCount, CancellationToken cancellationToken = default)
+    {
+        IReadOnlyCollection<CompanyProfile> result = _byId.Values
+            .Where(p => !p.IsArchived
+                        && string.Equals(p.Country, country, StringComparison.OrdinalIgnoreCase)
+                        && p.TraceCount >= minTraceCount)
+            .OrderByDescending(p => p.TraceCount)
+            .Take(maxCount)
+            .ToList();
+        return Task.FromResult(result);
+    }
+
     public Task<int> CountAsync(
         string? search = null,
         string? country = null,
