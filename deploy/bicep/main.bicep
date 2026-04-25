@@ -14,6 +14,13 @@ param sqlAdminLogin string = 'tracerAdmin'
 @secure()
 param sqlAdminPassword string
 
+@description('Whether to provision Azure OpenAI for Phase 3 AI workloads (B-78). Test envs typically opt out; production opts in once a quota approval is in place.')
+param enableAzureOpenAI bool = false
+
+@description('Public network access on the Azure OpenAI account when provisioned. Switch to "Disabled" once VNet integration / private endpoints land (B-92).')
+@allowed(['Enabled', 'Disabled'])
+param azureOpenAIPublicNetworkAccess string = 'Enabled'
+
 var namePrefix = 'tracer-${environment}'
 var tags = {
   project: 'tracer'
@@ -124,6 +131,43 @@ resource redisConnectionSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = 
   }
 }
 
+// Azure OpenAI (B-78, optional) — provisions the GPT-4o-mini deployments used by
+// the AiExtractor (B-57) and LlmDisambiguator (B-64). Default off in test envs;
+// flip enableAzureOpenAI=true in main-prod.bicepparam when quota is approved.
+module azureOpenAI 'modules/azure-openai.bicep' = if (enableAzureOpenAI) {
+  name: 'azureOpenAI'
+  params: {
+    location: location
+    namePrefix: namePrefix
+    tags: tags
+    publicNetworkAccess: azureOpenAIPublicNetworkAccess
+  }
+}
+
+// AOAI secrets in Key Vault. Endpoint is non-secret (@Microsoft.KeyVault() ref still
+// works either way and keeps configuration consistent across environments). Deployment
+// names are non-secret and exposed as plain App Settings. The API key is only persisted
+// while we remain pre-managed-identity; once VNet integration lands (B-92) we switch
+// to RBAC ('Cognitive Services OpenAI User' on App Service identity) and the apiKey
+// secret can be retired.
+resource aoaiEndpointSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (enableAzureOpenAI) {
+  parent: existingKeyVault
+  name: 'Providers--AzureOpenAI--Endpoint'
+  properties: {
+    value: enableAzureOpenAI ? azureOpenAI!.outputs.endpoint : ''
+    contentType: 'text/plain'
+  }
+}
+
+resource aoaiApiKeySecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (enableAzureOpenAI) {
+  parent: existingKeyVault
+  name: 'Providers--AzureOpenAI--ApiKey'
+  properties: {
+    value: enableAzureOpenAI ? azureOpenAI!.outputs.apiKey : ''
+    contentType: 'text/plain'
+  }
+}
+
 // Outputs — sensitive values (App Insights connection string, SQL FQDN) are NOT exported
 // to avoid exposure in deployment history. Retrieve them from Key Vault or Azure Portal.
 output apiUrl string = 'https://${appService.outputs.appServiceHostName}'
@@ -131,3 +175,7 @@ output webUrl string = 'https://${staticWebApp.outputs.staticWebAppHostName}'
 output keyVaultUri string = keyVault.outputs.vaultUri
 output serviceBusNamespace string = serviceBus.outputs.namespaceName
 output redisCacheName string = redis.outputs.cacheName
+output azureOpenAIEnabled bool = enableAzureOpenAI
+output azureOpenAIEndpoint string = enableAzureOpenAI ? azureOpenAI!.outputs.endpoint : ''
+output azureOpenAIExtractorDeployment string = enableAzureOpenAI ? azureOpenAI!.outputs.extractorDeploymentName : ''
+output azureOpenAIDisambiguatorDeployment string = enableAzureOpenAI ? azureOpenAI!.outputs.disambiguatorDeploymentName : ''
