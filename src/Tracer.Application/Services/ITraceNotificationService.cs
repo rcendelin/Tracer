@@ -34,4 +34,20 @@ public interface ITraceNotificationService
     Task NotifyChangeDetectedAsync(
         ChangeEventDto changeEvent,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Notifies live progress of the re-validation engine (B-94).
+    /// </summary>
+    /// <remarks>
+    /// Broadcast to <c>Clients.All</c> like <see cref="NotifyChangeDetectedAsync"/> —
+    /// re-validation progress is a global concern. The frontend dashboard subscribes
+    /// via <c>useSignalR().onValidationProgress</c>. The scheduler is expected to
+    /// rate-limit calls (~1 update/2 s) so a 100-profile tick does not flood the hub.
+    /// </remarks>
+    /// <param name="profilesProcessed">Cumulative profiles processed in the current tick.</param>
+    /// <param name="profilesRemaining">Profiles still pending in the current tick.</param>
+    Task NotifyValidationProgressAsync(
+        int profilesProcessed,
+        int profilesRemaining,
+        CancellationToken cancellationToken = default);
 }
