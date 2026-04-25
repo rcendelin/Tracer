@@ -19,4 +19,13 @@ public sealed record EnrichedCompanyDto
     public TracedFieldDto<string>? EntityStatus { get; init; }
     public TracedFieldDto<string>? ParentCompany { get; init; }
     public TracedFieldDto<GeoCoordinateDto>? Location { get; init; }
+
+    /// <summary>
+    /// Directors / officers (B-93). GDPR-gated personal data: present only when
+    /// the original <c>TraceRequest.IncludeOfficers = true</c>; otherwise the
+    /// field is stripped upstream by <c>WaterfallOrchestrator</c>. Consumers
+    /// must handle <see langword="null"/> as "data exists but caller didn't
+    /// opt in" (or "no officer data found"); the wire shape is identical.
+    /// </summary>
+    public TracedFieldDto<IReadOnlyList<string>>? Officers { get; init; }
 }
