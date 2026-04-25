@@ -71,4 +71,15 @@ public sealed class ChangeEvent : BaseEntity
     {
         IsNotified = true;
     }
+
+    /// <summary>
+    /// Reclassifies this change event as a manual operator override (B-85).
+    /// Idempotent. Severity stays as classified by the field-level logic so a
+    /// manual override of a critical field still publishes through the
+    /// Critical handler.
+    /// </summary>
+    public void MarkAsManualOverride()
+    {
+        ChangeType = Enums.ChangeType.ManualOverride;
+    }
 }
