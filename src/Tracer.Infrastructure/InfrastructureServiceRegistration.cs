@@ -28,6 +28,7 @@ using Tracer.Infrastructure.Providers.LatamRegistry.Adapters;
 using Tracer.Infrastructure.Providers.LatamRegistry.Providers;
 using Tracer.Infrastructure.Providers.AiExtractor;
 using Tracer.Infrastructure.Telemetry;
+using Tracer.Infrastructure.Caching;
 using Azure;
 using Azure.AI.OpenAI;
 
@@ -39,13 +40,24 @@ namespace Tracer.Infrastructure;
 public static class InfrastructureServiceRegistration
 {
     /// <summary>
-    /// Adds Infrastructure layer services: DbContext, repositories, and unit of work.
+    /// Adds Infrastructure layer services: DbContext, repositories, distributed cache,
+    /// HTTP-backed providers, and Service Bus messaging.
     /// </summary>
     /// <param name="services">The service collection.</param>
     /// <param name="connectionString">The SQL Server connection string.</param>
-    public static IServiceCollection AddInfrastructure(this IServiceCollection services, string connectionString)
+    /// <param name="configuration">
+    /// Application configuration. Used to bind cache options (B-79), HTTP-client provider
+    /// keys, Service Bus, and Azure OpenAI settings. Required so a Redis migration
+    /// (<c>Cache:Provider = Redis</c>) can be enabled by configuration without changing
+    /// the call site.
+    /// </param>
+    public static IServiceCollection AddInfrastructure(
+        this IServiceCollection services,
+        string connectionString,
+        IConfiguration configuration)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(connectionString, nameof(connectionString));
+        ArgumentNullException.ThrowIfNull(configuration);
 
         // Observability metrics — Singleton because Meter is thread-safe and long-lived
         services.AddSingleton<ITracerMetrics, TracerMetrics>();
@@ -59,10 +71,10 @@ public static class InfrastructureServiceRegistration
 
         services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<TracerDbContext>());
 
-        // Distributed cache (in-memory for MVP, switch to Redis in Phase 4)
-        services.AddDistributedMemoryCache();
-        services.AddOptions<Caching.CacheOptions>()
-            .BindConfiguration(Caching.CacheOptions.SectionName);
+        // Distributed cache (B-79) — driven by Cache:Provider config.
+        // Default = InMemory (transparent fallback for dev/CI).
+        // Redis = Azure Cache for Redis when ConnectionStrings:Redis is present.
+        services.AddTracerDistributedCache(configuration);
         services.AddSingleton<IProfileCacheService, Caching.ProfileCacheService>();
         services.AddScoped<ITraceRequestRepository, TraceRequestRepository>();
         services.AddScoped<ICompanyProfileRepository, CompanyProfileRepository>();
@@ -449,11 +461,24 @@ public static class InfrastructureServiceRegistration
     }
 
     /// <summary>
-    /// Registers Infrastructure-layer health checks (database connectivity).
+    /// Registers Infrastructure-layer health checks: the database connectivity probe
+    /// and, when <c>Cache:Provider = Redis</c>, a Redis round-trip probe (B-79).
     /// Kept here because <see cref="Persistence.TracerDbContext"/> is internal to Infrastructure.
     /// </summary>
-    public static IHealthChecksBuilder AddInfrastructureHealthChecks(this IHealthChecksBuilder builder)
+    public static IHealthChecksBuilder AddInfrastructureHealthChecks(
+        this IHealthChecksBuilder builder,
+        IConfiguration configuration)
     {
-        return builder.AddCheck<HealthChecks.DatabaseHealthCheck>("database");
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentNullException.ThrowIfNull(configuration);
+
+        builder.AddCheck<HealthChecks.DatabaseHealthCheck>("database");
+
+        if (Caching.CacheOptions.ResolveProvider(configuration) == Caching.CacheProvider.Redis)
+        {
+            builder.AddCheck<HealthChecks.RedisHealthCheck>("redis");
+        }
+
+        return builder;
     }
 }

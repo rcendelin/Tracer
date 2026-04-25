@@ -85,6 +85,20 @@ public interface ICompanyProfileRepository
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Returns the top non-archived profiles across all countries, ordered by
+    /// <c>TraceCount</c> descending. Used by the B-79 cache-warming background
+    /// service to pre-populate the distributed cache with the hottest profiles.
+    /// </summary>
+    /// <param name="maxCount">
+    /// Maximum number of profiles to return. Caller is expected to cap this
+    /// (the cache-warming service caps at 10_000 via <c>CacheWarmingOptions</c>).
+    /// </param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<IReadOnlyCollection<CompanyProfile>> ListTopByTraceCountAsync(
+        int maxCount,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Counts company profiles matching the specified filters.
     /// </summary>
     Task<int> CountAsync(

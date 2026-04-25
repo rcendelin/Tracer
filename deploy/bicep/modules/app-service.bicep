@@ -59,6 +59,17 @@ resource webApp 'Microsoft.Web/sites@2024-04-01' = {
           name: 'ConnectionStrings__ServiceBus'
           value: empty(keyVaultUri) ? '' : '@Microsoft.KeyVault(SecretUri=${keyVaultUri}secrets/ConnectionStrings--ServiceBus/)'
         }
+        // Redis (B-79). Provider switches the IDistributedCache backing store from
+        // in-memory to StackExchange.Redis. The connection string is sourced from
+        // Key Vault (ConnectionStrings--Redis written by main.bicep).
+        {
+          name: 'ConnectionStrings__Redis'
+          value: empty(keyVaultUri) ? '' : '@Microsoft.KeyVault(SecretUri=${keyVaultUri}secrets/ConnectionStrings--Redis/)'
+        }
+        {
+          name: 'Cache__Provider'
+          value: 'Redis'
+        }
         {
           name: 'Providers__GoogleMaps__ApiKey'
           value: empty(keyVaultUri) ? '' : '@Microsoft.KeyVault(SecretUri=${keyVaultUri}secrets/Providers--GoogleMaps--ApiKey/)'
