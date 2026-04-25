@@ -17,10 +17,11 @@ public sealed class CkbPersistenceServiceTests
     private readonly IConfidenceScorer _scorer = new ConfidenceScorer();
     private readonly IChangeDetector _changeDetector = new ChangeDetector(Substitute.For<ILogger<ChangeDetector>>());
     private readonly IProfileCacheService _cache = Substitute.For<IProfileCacheService>();
+    private readonly ITracerMetrics _metrics = Substitute.For<ITracerMetrics>();
     private readonly ILogger<CkbPersistenceService> _logger = Substitute.For<ILogger<CkbPersistenceService>>();
 
     private CkbPersistenceService CreateSut() =>
-        new(_profileRepo, _changeEventRepo, _unitOfWork, _scorer, _changeDetector, _cache, _logger);
+        new(_profileRepo, _changeEventRepo, _unitOfWork, _scorer, _changeDetector, _cache, _metrics, _logger);
 
     private static CompanyProfile CreateProfile() => new("CZ:12345678", "CZ", "12345678");
 
@@ -198,5 +199,41 @@ public sealed class CkbPersistenceServiceTests
 
         profile.RegisteredAddress.Should().NotBeNull();
         profile.RegisteredAddress!.Value.City.Should().Be("Praha");
+    }
+
+    [Fact]
+    public async Task PersistEnrichmentAsync_ArchivedProfile_IsUnarchivedAndMetricRecorded()
+    {
+        var sut = CreateSut();
+        var profile = CreateProfile();
+        profile.Archive();
+        profile.IsArchived.Should().BeTrue();
+
+        await sut.PersistEnrichmentAsync(
+            profile,
+            [],
+            CreateMergeResult(),
+            Guid.NewGuid(),
+            CancellationToken.None);
+
+        profile.IsArchived.Should().BeFalse();
+        _metrics.Received(1).RecordCkbUnarchived();
+    }
+
+    [Fact]
+    public async Task PersistEnrichmentAsync_ActiveProfile_DoesNotRecordUnarchive()
+    {
+        var sut = CreateSut();
+        var profile = CreateProfile();
+
+        await sut.PersistEnrichmentAsync(
+            profile,
+            [],
+            CreateMergeResult(),
+            Guid.NewGuid(),
+            CancellationToken.None);
+
+        profile.IsArchived.Should().BeFalse();
+        _metrics.DidNotReceive().RecordCkbUnarchived();
     }
 }

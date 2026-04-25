@@ -38,6 +38,8 @@ internal sealed class TracerMetrics : ITracerMetrics, IDisposable
     private readonly Counter<long> _revalidationProcessed;
     private readonly Counter<long> _revalidationSkipped;
     private readonly Counter<long> _revalidationFailed;
+    private readonly Counter<long> _ckbArchived;
+    private readonly Counter<long> _ckbUnarchived;
 
     public TracerMetrics()
     {
@@ -93,6 +95,14 @@ internal sealed class TracerMetrics : ITracerMetrics, IDisposable
         _revalidationFailed = _meter.CreateCounter<long>(
             "tracer.revalidation.failed",
             description: "Number of re-validation passes that raised an unhandled error.");
+
+        _ckbArchived = _meter.CreateCounter<long>(
+            "tracer.ckb.archived",
+            description: "Number of CKB profiles transitioned from active to archived by the ArchivalService.");
+
+        _ckbUnarchived = _meter.CreateCounter<long>(
+            "tracer.ckb.unarchived",
+            description: "Number of CKB profiles un-archived by an incoming trace hitting an archived record.");
     }
 
     /// <inheritdoc/>
@@ -144,6 +154,16 @@ internal sealed class TracerMetrics : ITracerMetrics, IDisposable
         if (failed > 0)
             _revalidationFailed.Add(failed, tags);
     }
+
+    /// <inheritdoc/>
+    public void RecordCkbArchived(int count)
+    {
+        if (count > 0)
+            _ckbArchived.Add(count);
+    }
+
+    /// <inheritdoc/>
+    public void RecordCkbUnarchived() => _ckbUnarchived.Add(1);
 
     public void Dispose() => _meter.Dispose();
 }

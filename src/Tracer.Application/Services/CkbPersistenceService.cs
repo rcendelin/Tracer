@@ -16,6 +16,7 @@ public sealed partial class CkbPersistenceService : ICkbPersistenceService
     private readonly IConfidenceScorer _scorer;
     private readonly IChangeDetector _changeDetector;
     private readonly IProfileCacheService _cache;
+    private readonly ITracerMetrics _metrics;
     private readonly ILogger<CkbPersistenceService> _logger;
 
     public CkbPersistenceService(
@@ -25,6 +26,7 @@ public sealed partial class CkbPersistenceService : ICkbPersistenceService
         IConfidenceScorer scorer,
         IChangeDetector changeDetector,
         IProfileCacheService cache,
+        ITracerMetrics metrics,
         ILogger<CkbPersistenceService> logger)
     {
         _profileRepository = profileRepository;
@@ -33,6 +35,7 @@ public sealed partial class CkbPersistenceService : ICkbPersistenceService
         _scorer = scorer;
         _changeDetector = changeDetector;
         _cache = cache;
+        _metrics = metrics;
         _logger = logger;
     }
 
@@ -46,6 +49,17 @@ public sealed partial class CkbPersistenceService : ICkbPersistenceService
         ArgumentNullException.ThrowIfNull(profile);
         ArgumentNullException.ThrowIfNull(sourceResults);
         ArgumentNullException.ThrowIfNull(mergeResult);
+
+        // 0. Un-archive if the resolver matched an archived profile (B-83).
+        // Archival is a pure maintenance flag; a new trace restoring the profile
+        // returns it to the active working set. Silent — no domain event; the
+        // TraceCount increment below is the signal that the profile is in use again.
+        if (profile.IsArchived)
+        {
+            profile.Unarchive();
+            _metrics.RecordCkbUnarchived();
+            LogProfileUnarchived(profile.NormalizedKey);
+        }
 
         // 1. Detect changes and apply merged fields to profile
         var detectionResult = _changeDetector.DetectChanges(profile, mergeResult.BestFields);
@@ -85,4 +99,8 @@ public sealed partial class CkbPersistenceService : ICkbPersistenceService
     [LoggerMessage(Level = LogLevel.Information,
         Message = "CKB: Persisted {NormalizedKey} with {ChangeCount} changes, confidence {Confidence:F2}")]
     private partial void LogPersistenceComplete(string normalizedKey, int changeCount, double confidence);
+
+    [LoggerMessage(Level = LogLevel.Information,
+        Message = "CKB: Un-archived {NormalizedKey} on incoming trace")]
+    private partial void LogProfileUnarchived(string normalizedKey);
 }

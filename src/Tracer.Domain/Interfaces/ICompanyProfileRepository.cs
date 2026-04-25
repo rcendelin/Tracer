@@ -164,4 +164,30 @@ public interface ICompanyProfileRepository
         DateTimeOffset? validatedBefore = null,
         bool includeArchived = false,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Archives non-archived profiles whose <c>LastEnrichedAt</c> is strictly
+    /// before <paramref name="enrichedBefore"/> and whose <c>TraceCount</c>
+    /// is at most <paramref name="maxTraceCount"/>. Profiles with
+    /// <c>LastEnrichedAt == null</c> are never archived — without an
+    /// enrichment timestamp we cannot reason about age.
+    /// </summary>
+    /// <remarks>
+    /// Implementations must update a bounded batch of rows in a single
+    /// round-trip (no per-row domain event dispatch). The archival policy
+    /// is monotonic — running twice is idempotent; a returned count of 0
+    /// means the CKB is already in the steady state.
+    /// </remarks>
+    /// <param name="enrichedBefore">
+    /// Rows with <c>LastEnrichedAt &lt; enrichedBefore</c> become candidates.
+    /// </param>
+    /// <param name="maxTraceCount">Inclusive upper bound on <c>TraceCount</c>.</param>
+    /// <param name="batchSize">Maximum rows archived per call.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The number of rows that transitioned from active to archived.</returns>
+    Task<int> ArchiveStaleAsync(
+        DateTimeOffset enrichedBefore,
+        int maxTraceCount,
+        int batchSize,
+        CancellationToken cancellationToken = default);
 }
