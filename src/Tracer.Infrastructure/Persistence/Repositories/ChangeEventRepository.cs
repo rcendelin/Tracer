@@ -1,0 +1,171 @@
+using Microsoft.EntityFrameworkCore;
+using Tracer.Domain.Entities;
+using Tracer.Domain.Enums;
+using Tracer.Domain.Interfaces;
+
+namespace Tracer.Infrastructure.Persistence.Repositories;
+
+/// <summary>
+/// EF Core implementation of <see cref="IChangeEventRepository"/>.
+/// </summary>
+internal sealed class ChangeEventRepository : IChangeEventRepository
+{
+    private readonly TracerDbContext _db;
+
+    public ChangeEventRepository(TracerDbContext db)
+    {
+        _db = db;
+    }
+
+    public async Task<ChangeEvent?> GetByIdAsync(Guid id, CancellationToken cancellationToken)
+    {
+        return await _db.ChangeEvents
+            .FirstOrDefaultAsync(e => e.Id == id, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async Task AddAsync(ChangeEvent changeEvent, CancellationToken cancellationToken)
+    {
+        await _db.ChangeEvents.AddAsync(changeEvent, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<IReadOnlyCollection<ChangeEvent>> ListByProfileAsync(
+        Guid companyProfileId, int page, int pageSize, CancellationToken cancellationToken)
+    {
+        return await _db.ChangeEvents
+            .AsNoTracking()
+            .Where(e => e.CompanyProfileId == companyProfileId)
+            .OrderByDescending(e => e.DetectedAt)
+            .Skip(page * pageSize)
+            .Take(pageSize)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async Task<IReadOnlyCollection<ChangeEvent>> ListBySeverityAsync(
+        ChangeSeverity minSeverity, int page, int pageSize, CancellationToken cancellationToken)
+    {
+        return await _db.ChangeEvents
+            .AsNoTracking()
+            .Where(e => e.Severity >= minSeverity)
+            .OrderByDescending(e => e.DetectedAt)
+            .Skip(page * pageSize)
+            .Take(pageSize)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async Task<int> CountByProfileAsync(Guid companyProfileId, CancellationToken cancellationToken)
+    {
+        return await _db.ChangeEvents
+            .AsNoTracking()
+            .Where(e => e.CompanyProfileId == companyProfileId)
+            .CountAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async Task<int> CountBySeverityAsync(ChangeSeverity minSeverity, CancellationToken cancellationToken)
+    {
+        return await _db.ChangeEvents
+            .AsNoTracking()
+            .Where(e => e.Severity >= minSeverity)
+            .CountAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async Task<IReadOnlyCollection<ChangeEvent>> ListAsync(
+        int page, int pageSize,
+        ChangeSeverity? severity, Guid? profileId,
+        DateTimeOffset? since,
+        CancellationToken cancellationToken)
+    {
+        return await ApplyFilters(_db.ChangeEvents.AsNoTracking(), severity, profileId, since)
+            .OrderByDescending(e => e.DetectedAt)
+            .Skip(page * pageSize)
+            .Take(pageSize)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async Task<int> CountAsync(
+        ChangeSeverity? severity, Guid? profileId,
+        DateTimeOffset? since,
+        CancellationToken cancellationToken)
+    {
+        return await ApplyFilters(_db.ChangeEvents.AsNoTracking(), severity, profileId, since)
+            .CountAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async Task<int> CountSinceAsync(DateTimeOffset detectedAfter, CancellationToken cancellationToken)
+    {
+        return await _db.ChangeEvents
+            .AsNoTracking()
+            .Where(e => e.DetectedAt >= detectedAfter)
+            .CountAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public IAsyncEnumerable<ChangeEvent> StreamAsync(
+        int maxRows,
+        ChangeSeverity? severity,
+        Guid? profileId,
+        DateTimeOffset? from,
+        DateTimeOffset? to,
+        CancellationToken cancellationToken)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxRows);
+
+        var query = ApplyFilters(_db.ChangeEvents.AsNoTracking(), severity, profileId, since: null);
+        if (from.HasValue)
+            query = query.Where(e => e.DetectedAt >= from.Value);
+        if (to.HasValue)
+            query = query.Where(e => e.DetectedAt < to.Value);
+
+        return query
+            .OrderByDescending(e => e.DetectedAt)
+            .Take(maxRows)
+            .AsAsyncEnumerable();
+    }
+
+    public async Task<IReadOnlyList<ChangeTrendBucketRow>> GetMonthlyTrendAsync(
+        DateTimeOffset fromInclusive,
+        DateTimeOffset toExclusive,
+        CancellationToken cancellationToken)
+    {
+        if (toExclusive <= fromInclusive)
+            return Array.Empty<ChangeTrendBucketRow>();
+
+        // SQL Server translates DateTimeOffset.Year/.Month to DATEPART; grouped COUNT
+        // runs on the (DetectedAt, Severity) working set — both columns are indexed.
+        return await _db.ChangeEvents
+            .AsNoTracking()
+            .Where(e => e.DetectedAt >= fromInclusive && e.DetectedAt < toExclusive)
+            .GroupBy(e => new { e.DetectedAt.Year, e.DetectedAt.Month, e.Severity })
+            .Select(g => new ChangeTrendBucketRow
+            {
+                Year = g.Key.Year,
+                Month = g.Key.Month,
+                Severity = g.Key.Severity,
+                Count = g.Count(),
+            })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+
+    private static IQueryable<ChangeEvent> ApplyFilters(
+        IQueryable<ChangeEvent> query,
+        ChangeSeverity? severity,
+        Guid? profileId,
+        DateTimeOffset? since)
+    {
+        if (severity.HasValue)
+            query = query.Where(e => e.Severity == severity.Value);
+        if (profileId.HasValue)
+            query = query.Where(e => e.CompanyProfileId == profileId.Value);
+        if (since.HasValue)
+            query = query.Where(e => e.DetectedAt >= since.Value);
+        return query;
+    }
+}

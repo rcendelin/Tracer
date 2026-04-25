@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- MediatR.Contracts provides INotification for domain event dispatch via MediatR -->
+  <ItemGroup>
+    <PackageReference Include="MediatR.Contracts" />
+  </ItemGroup>
+
+  <!-- Allow Infrastructure to call internal domain methods (e.g. BaseEntity.ClearDomainEvents) -->
+  <!-- Allow test projects to verify domain event dispatch -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Tracer.Infrastructure" />
+    <InternalsVisibleTo Include="Tracer.Domain.Tests" />
+    <InternalsVisibleTo Include="Tracer.Application.Tests" />
+    <InternalsVisibleTo Include="Tracer.Infrastructure.Tests" />
+  </ItemGroup>
+
+</Project>

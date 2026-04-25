@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <!-- Project builds in Debug and Release; BenchmarkDotNet itself refuses to run
+         from a Debug build and exits fast, so dev-local Debug builds stay cheap. -->
+    <ServerGarbageCollection>true</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+    <!-- Benchmark classes expose public [Benchmark] methods that BenchmarkDotNet reflects on. -->
+    <NoWarn>$(NoWarn);CA1707</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Tracer.Application\Tracer.Application.csproj" />
+    <ProjectReference Include="..\..\src\Tracer.Domain\Tracer.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

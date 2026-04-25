@@ -1,0 +1,85 @@
+name: CI — Build & Test
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+    branches: [develop, main]
+
+env:
+  DOTNET_VERSION: '10.0.x'
+  NODE_VERSION: '22'
+
+jobs:
+  backend:
+    name: Backend (Build + Test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Test
+        run: dotnet test --no-build --configuration Release --logger "trx;LogFileName=test-results.trx" --collect:"XPlat Code Coverage"
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: '**/test-results.trx'
+
+      # B-87 — Fail the pipeline on High/Critical vulnerable NuGet packages
+      # (direct or transitive). `dotnet list package --vulnerable` returns
+      # success even when findings exist, so we grep the output ourselves.
+      - name: Scan NuGet packages for High/Critical CVEs
+        run: |
+          set -euo pipefail
+          report=$(dotnet list package --vulnerable --include-transitive 2>&1 || true)
+          echo "$report"
+          if echo "$report" | grep -Ei '\>[[:space:]]+(High|Critical)' > /dev/null; then
+            echo "::error::High or Critical NuGet vulnerabilities detected — fix or justify."
+            exit 1
+          fi
+
+  frontend:
+    name: Frontend (Build + Lint)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/Tracer.Web
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: src/Tracer.Web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript check
+        run: npx --no-install tsc -b --noEmit
+
+      - name: Lint
+        run: npm run lint
+
+      # B-87 — Fail on High/Critical npm advisories. Moderate/Low stay
+      # informational (baseline per plan — tighten once the tree is clean).
+      - name: Audit npm dependencies
+        run: npm audit --audit-level=high
+
+      - name: Build
+        run: npx --no-install vite build

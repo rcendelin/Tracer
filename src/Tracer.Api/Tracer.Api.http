@@ -1,0 +1,63 @@
+@baseUrl = https://localhost:7100
+@apiKey = dev-api-key-not-for-production
+
+### Health Check
+GET {{baseUrl}}/health
+
+### Dashboard Stats
+GET {{baseUrl}}/api/stats
+X-Api-Key: {{apiKey}}
+
+### Submit Trace — Skoda Auto (CZ)
+POST {{baseUrl}}/api/trace
+Content-Type: application/json
+X-Api-Key: {{apiKey}}
+
+{
+  "companyName": "Skoda Auto",
+  "country": "CZ",
+  "registrationId": "00027006",
+  "depth": "Standard"
+}
+
+### Submit Trace — Name Search (CZ)
+POST {{baseUrl}}/api/trace
+Content-Type: application/json
+X-Api-Key: {{apiKey}}
+
+{
+  "companyName": "Komercni banka",
+  "country": "CZ",
+  "depth": "Quick"
+}
+
+### Submit Trace — International
+POST {{baseUrl}}/api/trace
+Content-Type: application/json
+X-Api-Key: {{apiKey}}
+
+{
+  "companyName": "Volkswagen AG",
+  "country": "DE",
+  "depth": "Quick"
+}
+
+### List Traces
+GET {{baseUrl}}/api/trace?page=0&pageSize=10
+X-Api-Key: {{apiKey}}
+
+### Get Trace by ID (replace with actual ID)
+GET {{baseUrl}}/api/trace/00000000-0000-0000-0000-000000000000
+X-Api-Key: {{apiKey}}
+
+### List Profiles
+GET {{baseUrl}}/api/profiles?page=0&pageSize=10
+X-Api-Key: {{apiKey}}
+
+### Get Profile by ID (replace with actual ID)
+GET {{baseUrl}}/api/profiles/00000000-0000-0000-0000-000000000000
+X-Api-Key: {{apiKey}}
+
+### Get Profile History (replace with actual ID)
+GET {{baseUrl}}/api/profiles/00000000-0000-0000-0000-000000000000/history?page=0&pageSize=20
+X-Api-Key: {{apiKey}}

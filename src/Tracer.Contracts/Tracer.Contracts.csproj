@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Multi-target: net10.0 for local use, net8.0 for FieldForce (LTS) compatibility -->
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+
+    <!-- NuGet package metadata -->
+    <IsPackable>true</IsPackable>
+    <PackageId>Tracer.Contracts</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>XTUNING</Authors>
+    <Description>
+      Shared message contracts for Tracer — company data enrichment engine.
+      Reference this package in FieldForce (or any upstream/downstream service)
+      to send enrichment requests over Service Bus and receive results and change events.
+    </Description>
+    <PackageTags>tracer;contracts;service-bus;enrichment</PackageTags>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+  </PropertyGroup>
+
+  <!-- No external package dependencies — intentional.
+       Contracts must remain a zero-dependency package to ease consumer adoption. -->
+
+</Project>
