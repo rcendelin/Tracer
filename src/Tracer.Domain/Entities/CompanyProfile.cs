@@ -321,4 +321,90 @@ public sealed class CompanyProfile : BaseEntity, IAggregateRoot
 
     // Officers field is not stored as a TracedField property on CompanyProfile
     // because it is GDPR-gated. It will be handled separately in a future block.
+
+    /// <summary>
+    /// Refreshes <see cref="TracedField{T}.EnrichedAt"/> on <paramref name="fieldName"/>
+    /// to <paramref name="now"/> without changing the value or source. Used by the
+    /// B-66 lightweight re-validation runner to extend the TTL of fields that have
+    /// expired but whose value has not actually changed.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// **No domain event** is raised — the contract is "the value is still correct
+    /// as of <paramref name="now"/>", which is precisely what `EnrichedAt` records.
+    /// </para>
+    /// <para>
+    /// The method is idempotent / silent when the field has no value (null), and
+    /// monotonic when <paramref name="now"/> is earlier than the current
+    /// <c>EnrichedAt</c> — the existing value wins. Both cases short-circuit
+    /// rather than throw because the lightweight runner walks several fields and
+    /// must not give up on an inconsistent clock.
+    /// </para>
+    /// </remarks>
+    public void RefreshFieldEnrichedAt(FieldName fieldName, DateTimeOffset now)
+    {
+        switch (fieldName)
+        {
+            case FieldName.LegalName:
+                if (LegalName is not null && LegalName.EnrichedAt < now)
+                    LegalName = LegalName with { EnrichedAt = now };
+                break;
+            case FieldName.TradeName:
+                if (TradeName is not null && TradeName.EnrichedAt < now)
+                    TradeName = TradeName with { EnrichedAt = now };
+                break;
+            case FieldName.TaxId:
+                if (TaxId is not null && TaxId.EnrichedAt < now)
+                    TaxId = TaxId with { EnrichedAt = now };
+                break;
+            case FieldName.LegalForm:
+                if (LegalForm is not null && LegalForm.EnrichedAt < now)
+                    LegalForm = LegalForm with { EnrichedAt = now };
+                break;
+            case FieldName.RegisteredAddress:
+                if (RegisteredAddress is not null && RegisteredAddress.EnrichedAt < now)
+                    RegisteredAddress = RegisteredAddress with { EnrichedAt = now };
+                break;
+            case FieldName.OperatingAddress:
+                if (OperatingAddress is not null && OperatingAddress.EnrichedAt < now)
+                    OperatingAddress = OperatingAddress with { EnrichedAt = now };
+                break;
+            case FieldName.Phone:
+                if (Phone is not null && Phone.EnrichedAt < now)
+                    Phone = Phone with { EnrichedAt = now };
+                break;
+            case FieldName.Email:
+                if (Email is not null && Email.EnrichedAt < now)
+                    Email = Email with { EnrichedAt = now };
+                break;
+            case FieldName.Website:
+                if (Website is not null && Website.EnrichedAt < now)
+                    Website = Website with { EnrichedAt = now };
+                break;
+            case FieldName.Industry:
+                if (Industry is not null && Industry.EnrichedAt < now)
+                    Industry = Industry with { EnrichedAt = now };
+                break;
+            case FieldName.EmployeeRange:
+                if (EmployeeRange is not null && EmployeeRange.EnrichedAt < now)
+                    EmployeeRange = EmployeeRange with { EnrichedAt = now };
+                break;
+            case FieldName.EntityStatus:
+                if (EntityStatus is not null && EntityStatus.EnrichedAt < now)
+                    EntityStatus = EntityStatus with { EnrichedAt = now };
+                break;
+            case FieldName.ParentCompany:
+                if (ParentCompany is not null && ParentCompany.EnrichedAt < now)
+                    ParentCompany = ParentCompany with { EnrichedAt = now };
+                break;
+            case FieldName.Location:
+                if (Location is not null && Location.EnrichedAt < now)
+                    Location = Location with { EnrichedAt = now };
+                break;
+            // Officers / RegistrationId are intentionally excluded — Officers is
+            // GDPR-gated; RegistrationId is not a TracedField<T> (no EnrichedAt).
+            default:
+                break;
+        }
+    }
 }

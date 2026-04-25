@@ -44,11 +44,14 @@ public static class ApplicationServiceRegistration
         services.AddSingleton<IPersonalDataAccessAudit, LoggingPersonalDataAccessAudit>();
 
         // Re-validation (B-65) — queue is singleton (in-memory Channel), scheduler lives in Infrastructure.
-        // Runner: DeepRevalidationRunner (B-67) is the default. When the profile has fewer expired fields
-        // than the configured threshold it returns Deferred, matching the current placeholder behaviour
-        // until the lightweight mode (B-66) replaces that branch.
+        // Runner: CompositeRevalidationRunner (B-66) dispatches to lightweight (timestamp-only refresh)
+        // or deep (full waterfall) based on the number of expired fields. Both concrete runners are
+        // registered as themselves so the composite can inject them directly; the scheduler only sees
+        // the IRevalidationRunner abstraction.
         services.AddSingleton<IRevalidationQueue, RevalidationQueue>();
-        services.AddScoped<IRevalidationRunner, DeepRevalidationRunner>();
+        services.AddScoped<LightweightRevalidationRunner>();
+        services.AddScoped<DeepRevalidationRunner>();
+        services.AddScoped<IRevalidationRunner, CompositeRevalidationRunner>();
 
         // Field TTL policy (B-68) — merges Revalidation:FieldTtl overrides with
         // platform defaults from FieldTtl.For(). Stateless, thread-safe.
