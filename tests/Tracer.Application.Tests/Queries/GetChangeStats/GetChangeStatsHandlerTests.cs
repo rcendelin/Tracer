@@ -14,10 +14,10 @@ public sealed class GetChangeStatsHandlerTests
 
     private void SetupCounts(int critical = 0, int major = 0, int minor = 0, int cosmetic = 0)
     {
-        _repository.CountAsync(ChangeSeverity.Critical, null, Arg.Any<CancellationToken>()).Returns(critical);
-        _repository.CountAsync(ChangeSeverity.Major,    null, Arg.Any<CancellationToken>()).Returns(major);
-        _repository.CountAsync(ChangeSeverity.Minor,    null, Arg.Any<CancellationToken>()).Returns(minor);
-        _repository.CountAsync(ChangeSeverity.Cosmetic, null, Arg.Any<CancellationToken>()).Returns(cosmetic);
+        _repository.CountAsync(ChangeSeverity.Critical, null, Arg.Any<DateTimeOffset?>(), Arg.Any<CancellationToken>()).Returns(critical);
+        _repository.CountAsync(ChangeSeverity.Major,    null, Arg.Any<DateTimeOffset?>(), Arg.Any<CancellationToken>()).Returns(major);
+        _repository.CountAsync(ChangeSeverity.Minor,    null, Arg.Any<DateTimeOffset?>(), Arg.Any<CancellationToken>()).Returns(minor);
+        _repository.CountAsync(ChangeSeverity.Cosmetic, null, Arg.Any<DateTimeOffset?>(), Arg.Any<CancellationToken>()).Returns(cosmetic);
     }
 
     // ── Basic counts ──────────────────────────────────────────────────────
@@ -74,10 +74,10 @@ public sealed class GetChangeStatsHandlerTests
         await CreateSut().Handle(new GetChangeStatsQuery(), CancellationToken.None);
 
         // All four severity counts must be queried — no severity skipped
-        await _repository.Received(1).CountAsync(ChangeSeverity.Critical, null, Arg.Any<CancellationToken>());
-        await _repository.Received(1).CountAsync(ChangeSeverity.Major,    null, Arg.Any<CancellationToken>());
-        await _repository.Received(1).CountAsync(ChangeSeverity.Minor,    null, Arg.Any<CancellationToken>());
-        await _repository.Received(1).CountAsync(ChangeSeverity.Cosmetic, null, Arg.Any<CancellationToken>());
+        await _repository.Received(1).CountAsync(ChangeSeverity.Critical, null, Arg.Any<DateTimeOffset?>(), Arg.Any<CancellationToken>());
+        await _repository.Received(1).CountAsync(ChangeSeverity.Major,    null, Arg.Any<DateTimeOffset?>(), Arg.Any<CancellationToken>());
+        await _repository.Received(1).CountAsync(ChangeSeverity.Minor,    null, Arg.Any<DateTimeOffset?>(), Arg.Any<CancellationToken>());
+        await _repository.Received(1).CountAsync(ChangeSeverity.Cosmetic, null, Arg.Any<DateTimeOffset?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -100,7 +100,7 @@ public sealed class GetChangeStatsHandlerTests
         using var cts = new CancellationTokenSource();
         await cts.CancelAsync().ConfigureAwait(true);
 
-        _repository.CountAsync(Arg.Any<ChangeSeverity?>(), Arg.Any<Guid?>(), Arg.Any<CancellationToken>())
+        _repository.CountAsync(Arg.Any<ChangeSeverity?>(), Arg.Any<Guid?>(), Arg.Any<DateTimeOffset?>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromCanceled<int>(cts.Token));
 
         var act = () => CreateSut().Handle(new GetChangeStatsQuery(), cts.Token);

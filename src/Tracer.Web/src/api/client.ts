@@ -221,16 +221,40 @@ export const changesApi = {
     pageSize?: number;
     severity?: ChangeSeverity;
     profileId?: string;
+    /** ISO 8601 datetime — only events detected at or after this moment. (B-73) */
+    since?: string;
   } = {}) => {
     const query = new URLSearchParams();
     if (params.page !== undefined) query.set('page', String(params.page));
     if (params.pageSize !== undefined) query.set('pageSize', String(params.pageSize));
     if (params.severity) query.set('severity', params.severity);
     if (params.profileId) query.set('profileId', params.profileId);
+    if (params.since) query.set('since', params.since);
     return fetchApi<PagedResult<ChangeEvent>>(`/changes?${query}`);
   },
 
-  stats: () => fetchApi<ChangeStats>('/changes/stats'),
+  stats: (since?: string) => {
+    const path = since
+      ? `/changes/stats?since=${encodeURIComponent(since)}`
+      : '/changes/stats';
+    return fetchApi<ChangeStats>(path);
+  },
+
+  /**
+   * B-73: Idempotent acknowledge — marks a change event as notified.
+   * Returns once the server has persisted the flag (HTTP 204). Throws
+   * `ApiError` on 404 (event missing) or any non-2xx response.
+   */
+  acknowledge: async (changeEventId: string): Promise<void> => {
+    const response = await fetch(`${BASE_URL}/changes/${changeEventId}/acknowledge`, {
+      method: 'POST',
+    });
+    if (!response.ok) {
+      const problem = await response.json().catch(() => null);
+      throw new ApiError(response.status, problem?.title ?? response.statusText, problem);
+    }
+    // 204 No Content — nothing to read.
+  },
 
   /**
    * Downloads the current change feed view as CSV or XLSX.

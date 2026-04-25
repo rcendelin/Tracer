@@ -31,9 +31,9 @@ public sealed class ListChangesHandlerTests
     public async Task Handle_DefaultQuery_ReturnsPagedResult()
     {
         var events = new[] { CreateEvent(), CreateEvent() };
-        _repository.ListAsync(0, 20, null, null, Arg.Any<CancellationToken>())
+        _repository.ListAsync(0, 20, null, null, Arg.Any<DateTimeOffset?>(), Arg.Any<CancellationToken>())
             .Returns(events);
-        _repository.CountAsync(null, null, Arg.Any<CancellationToken>())
+        _repository.CountAsync(null, null, Arg.Any<DateTimeOffset?>(), Arg.Any<CancellationToken>())
             .Returns(2);
 
         var result = await CreateSut().Handle(new ListChangesQuery { Page = 0, PageSize = 20 }, CancellationToken.None);
@@ -47,39 +47,39 @@ public sealed class ListChangesHandlerTests
     [Fact]
     public async Task Handle_NegativePage_ClampsToZero()
     {
-        _repository.ListAsync(0, 10, Arg.Any<ChangeSeverity?>(), Arg.Any<Guid?>(), Arg.Any<CancellationToken>())
+        _repository.ListAsync(0, 10, Arg.Any<ChangeSeverity?>(), Arg.Any<Guid?>(), Arg.Any<DateTimeOffset?>(), Arg.Any<CancellationToken>())
             .Returns([]);
-        _repository.CountAsync(Arg.Any<ChangeSeverity?>(), Arg.Any<Guid?>(), Arg.Any<CancellationToken>())
+        _repository.CountAsync(Arg.Any<ChangeSeverity?>(), Arg.Any<Guid?>(), Arg.Any<DateTimeOffset?>(), Arg.Any<CancellationToken>())
             .Returns(0);
 
         var result = await CreateSut().Handle(
             new ListChangesQuery { Page = -5, PageSize = 10 }, CancellationToken.None);
 
         result.Page.Should().Be(0);
-        await _repository.Received(1).ListAsync(0, 10, Arg.Any<ChangeSeverity?>(), Arg.Any<Guid?>(), Arg.Any<CancellationToken>());
+        await _repository.Received(1).ListAsync(0, 10, Arg.Any<ChangeSeverity?>(), Arg.Any<Guid?>(), Arg.Any<DateTimeOffset?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
     public async Task Handle_PageSizeOver100_ClampedTo100()
     {
-        _repository.ListAsync(0, 100, Arg.Any<ChangeSeverity?>(), Arg.Any<Guid?>(), Arg.Any<CancellationToken>())
+        _repository.ListAsync(0, 100, Arg.Any<ChangeSeverity?>(), Arg.Any<Guid?>(), Arg.Any<DateTimeOffset?>(), Arg.Any<CancellationToken>())
             .Returns([]);
-        _repository.CountAsync(Arg.Any<ChangeSeverity?>(), Arg.Any<Guid?>(), Arg.Any<CancellationToken>())
+        _repository.CountAsync(Arg.Any<ChangeSeverity?>(), Arg.Any<Guid?>(), Arg.Any<DateTimeOffset?>(), Arg.Any<CancellationToken>())
             .Returns(0);
 
         var result = await CreateSut().Handle(
             new ListChangesQuery { Page = 0, PageSize = 999 }, CancellationToken.None);
 
         result.PageSize.Should().Be(100);
-        await _repository.Received(1).ListAsync(0, 100, Arg.Any<ChangeSeverity?>(), Arg.Any<Guid?>(), Arg.Any<CancellationToken>());
+        await _repository.Received(1).ListAsync(0, 100, Arg.Any<ChangeSeverity?>(), Arg.Any<Guid?>(), Arg.Any<DateTimeOffset?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
     public async Task Handle_PageSizeZero_ClampedToOne()
     {
-        _repository.ListAsync(0, 1, Arg.Any<ChangeSeverity?>(), Arg.Any<Guid?>(), Arg.Any<CancellationToken>())
+        _repository.ListAsync(0, 1, Arg.Any<ChangeSeverity?>(), Arg.Any<Guid?>(), Arg.Any<DateTimeOffset?>(), Arg.Any<CancellationToken>())
             .Returns([]);
-        _repository.CountAsync(Arg.Any<ChangeSeverity?>(), Arg.Any<Guid?>(), Arg.Any<CancellationToken>())
+        _repository.CountAsync(Arg.Any<ChangeSeverity?>(), Arg.Any<Guid?>(), Arg.Any<DateTimeOffset?>(), Arg.Any<CancellationToken>())
             .Returns(0);
 
         var result = await CreateSut().Handle(
@@ -93,9 +93,9 @@ public sealed class ListChangesHandlerTests
     [Fact]
     public async Task Handle_SeverityFilter_PassedToRepository()
     {
-        _repository.ListAsync(0, 20, ChangeSeverity.Critical, null, Arg.Any<CancellationToken>())
+        _repository.ListAsync(0, 20, ChangeSeverity.Critical, null, Arg.Any<DateTimeOffset?>(), Arg.Any<CancellationToken>())
             .Returns([CreateEvent(severity: ChangeSeverity.Critical)]);
-        _repository.CountAsync(ChangeSeverity.Critical, null, Arg.Any<CancellationToken>())
+        _repository.CountAsync(ChangeSeverity.Critical, null, Arg.Any<DateTimeOffset?>(), Arg.Any<CancellationToken>())
             .Returns(1);
 
         var result = await CreateSut().Handle(
@@ -103,16 +103,16 @@ public sealed class ListChangesHandlerTests
             CancellationToken.None);
 
         result.Items.Should().HaveCount(1);
-        await _repository.Received(1).ListAsync(0, 20, ChangeSeverity.Critical, null, Arg.Any<CancellationToken>());
+        await _repository.Received(1).ListAsync(0, 20, ChangeSeverity.Critical, null, Arg.Any<DateTimeOffset?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
     public async Task Handle_ProfileIdFilter_PassedToRepository()
     {
         var profileId = Guid.NewGuid();
-        _repository.ListAsync(0, 20, null, profileId, Arg.Any<CancellationToken>())
+        _repository.ListAsync(0, 20, null, profileId, Arg.Any<DateTimeOffset?>(), Arg.Any<CancellationToken>())
             .Returns([CreateEvent(profileId)]);
-        _repository.CountAsync(null, profileId, Arg.Any<CancellationToken>())
+        _repository.CountAsync(null, profileId, Arg.Any<DateTimeOffset?>(), Arg.Any<CancellationToken>())
             .Returns(1);
 
         var result = await CreateSut().Handle(
@@ -120,7 +120,7 @@ public sealed class ListChangesHandlerTests
             CancellationToken.None);
 
         result.Items.Should().HaveCount(1);
-        await _repository.Received(1).ListAsync(0, 20, null, profileId, Arg.Any<CancellationToken>());
+        await _repository.Received(1).ListAsync(0, 20, null, profileId, Arg.Any<DateTimeOffset?>(), Arg.Any<CancellationToken>());
     }
 
     // ── Pagination metadata ───────────────────────────────────────────────
@@ -128,9 +128,9 @@ public sealed class ListChangesHandlerTests
     [Fact]
     public async Task Handle_MultiplePages_ComputesHasNextPage()
     {
-        _repository.ListAsync(0, 10, null, null, Arg.Any<CancellationToken>())
+        _repository.ListAsync(0, 10, null, null, Arg.Any<DateTimeOffset?>(), Arg.Any<CancellationToken>())
             .Returns(Enumerable.Range(0, 10).Select(_ => CreateEvent()).ToList());
-        _repository.CountAsync(null, null, Arg.Any<CancellationToken>())
+        _repository.CountAsync(null, null, Arg.Any<DateTimeOffset?>(), Arg.Any<CancellationToken>())
             .Returns(25);
 
         var result = await CreateSut().Handle(
@@ -145,9 +145,9 @@ public sealed class ListChangesHandlerTests
     [Fact]
     public async Task Handle_LastPage_HasNextPageFalse()
     {
-        _repository.ListAsync(2, 10, null, null, Arg.Any<CancellationToken>())
+        _repository.ListAsync(2, 10, null, null, Arg.Any<DateTimeOffset?>(), Arg.Any<CancellationToken>())
             .Returns(Enumerable.Range(0, 5).Select(_ => CreateEvent()).ToList());
-        _repository.CountAsync(null, null, Arg.Any<CancellationToken>())
+        _repository.CountAsync(null, null, Arg.Any<DateTimeOffset?>(), Arg.Any<CancellationToken>())
             .Returns(25);
 
         var result = await CreateSut().Handle(
@@ -174,9 +174,9 @@ public sealed class ListChangesHandlerTests
     {
         var profileId = Guid.NewGuid();
         var ev = CreateEvent(profileId, ChangeSeverity.Major);
-        _repository.ListAsync(0, 20, null, null, Arg.Any<CancellationToken>())
+        _repository.ListAsync(0, 20, null, null, Arg.Any<DateTimeOffset?>(), Arg.Any<CancellationToken>())
             .Returns([ev]);
-        _repository.CountAsync(null, null, Arg.Any<CancellationToken>())
+        _repository.CountAsync(null, null, Arg.Any<DateTimeOffset?>(), Arg.Any<CancellationToken>())
             .Returns(1);
 
         var result = await CreateSut().Handle(
